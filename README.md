@@ -106,7 +106,7 @@ This is a prototype for an evaluation, not a deployable system. Known gaps:
 - **Database:** SQLite, with `create_all` instead of migrations. Production needs Postgres and Alembic.
 - **Integrations are fakes:** the payment processor and the Teams/Slack notifier are stand-ins. Outbox events are
   dispatched in-process, with no retry worker or broker.
-- **No field-level PII masking:** every role sees full customer names and emails.
+- **No field-level PII masking:** every role sees full customer names and emails in refunds; KYC pages (applicant address, device, documents) are limited to approver/admin via `kyc.read`.
 - **No hosting, monitoring or alerting:** there is no deployment config, observability, backups or on-call setup.
 - **No load or security testing:** there has been no performance testing, penetration testing or threat model.
   The flag snapshot endpoint is unauthenticated, where production would require per-service tokens.
