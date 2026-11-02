@@ -142,9 +142,9 @@ def intake(db: Session, payload: dict) -> tuple[KycCase, bool]:
         device_fingerprint=str(device.get("fingerprint", "")), ip_address=str(device.get("ip", "")),
         vendor_decision=decision, vendor_checks=dict(payload.get("checks") or {}),
     )
-    db.add(case)
     try:
         with db.begin_nested():
+            db.add(case)
             db.flush()
     except IntegrityError:
         # Concurrent retry of the same delivery won the race; honour the idempotent contract.

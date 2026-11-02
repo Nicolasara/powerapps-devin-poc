@@ -195,21 +195,24 @@ def on_kyc_decision(db: Session, payload: dict) -> None:
 
 
 def kyc_case_link(db: Session, customer_email: str) -> str | None:
-    """Where to review this customer's KYC: the case the event pointed at, or a search in the KYC queue."""
-    signal = db.scalars(select(KycSignal).where(KycSignal.customer_email == customer_email.lower())
-                        .order_by(KycSignal.at.desc())).first()
+    """Where to review the KYC decision the banner talks about (same signal as kyc_hint)."""
+    signal = _kyc_signal(db, customer_email)
     if signal is None:
         return None
     return f"/kyc/{signal.case_id}" if signal.case_id else f"/kyc?status=all&q={customer_email}"
 
 
-def kyc_hint(db: Session, customer_email: str) -> str | None:
-    signal = db.scalars(
+def _kyc_signal(db: Session, customer_email: str) -> KycSignal | None:
+    return db.scalars(
         select(KycSignal).where(
             KycSignal.customer_email == customer_email.lower(),
             (KycSignal.reviewed_manually.is_(True)) | (KycSignal.risk_band == "high"),
-        ).order_by(KycSignal.at.desc())
+        ).order_by(KycSignal.at.desc(), KycSignal.id.desc())
     ).first()
+
+
+def kyc_hint(db: Session, customer_email: str) -> str | None:
+    signal = _kyc_signal(db, customer_email)
     if signal is None:
         return None
     day = signal.at.strftime("%Y-%m-%d")
