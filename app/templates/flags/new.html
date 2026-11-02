@@ -1,43 +1,31 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}New flag{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/flags">Feature flags</a><span class="sep">/</span><span class="cur">New flag</span>{% endblock %}
 {% block content %}
-<h1>New feature flag</h1>
-{% if error %}<div class="flash" style="border-color:#dc2626;color:#991b1b;">{{ error }}</div>{% endif %}
-<div class="card" style="max-width:640px;">
+<div class="ph"><div><h1>New feature flag</h1><p>Flags are per environment. New prod flags start disabled at 0%; enabling them needs approval.</p></div></div>
+{% if error %}<div class="alert alert-error">{{ icon("x-circle") }}<span>{{ error }}</span></div>{% endif %}
+<div class="card" style="max-width:640px"><div class="card-b">
   <form method="post" action="/flags">
-    <p>
-      <label for="key">Key</label><br>
-      <input id="key" name="key" required pattern="[a-z0-9]+(_[a-z0-9]+)*" maxlength="100"
-             value="{{ form.key or '' }}" placeholder="instant_transfers" style="width:100%;">
-      <br><span class="muted" style="font-size:.85em;">Lowercase letters, digits and underscores.</span>
-    </p>
-    <p>
-      <label for="description">Description</label><br>
-      <input id="description" name="description" value="{{ form.description or '' }}" style="width:100%;">
-    </p>
-    <p>
-      <label for="owner_team">Owner team</label><br>
-      <input id="owner_team" name="owner_team" value="{{ form.owner_team or '' }}" placeholder="payments" style="width:100%;">
-    </p>
-    <p>
-      <label for="environment">Environment</label><br>
-      <select id="environment" name="environment">
-        {% for env in environments %}
-        <option value="{{ env }}" {% if form.environment == env %}selected{% endif %}>{{ env }}</option>
-        {% endfor %}
-      </select>
-    </p>
-    <p>
-      <label><input type="checkbox" name="enabled" value="true" {% if form.enabled %}checked{% endif %}> Enabled</label>
-    </p>
-    <p>
-      <label for="rollout_percent">Rollout %</label><br>
-      <input id="rollout_percent" name="rollout_percent" type="number" min="0" max="100"
-             value="{{ form.rollout_percent if form.rollout_percent is not none else 0 }}">
-    </p>
-    <p class="muted" style="font-size:.85em;">New prod flags are created disabled at 0%. Enabling them requires approval.</p>
-    <button class="btn btn-primary" type="submit">Create flag</button>
-    <a class="btn btn-secondary" href="/flags">Cancel</a>
+    <div class="field">
+      <label for="key">Key</label>
+      <input id="key" name="key" required pattern="[a-z0-9]+(_[a-z0-9]+)*" maxlength="100" value="{{ form.key or '' }}" placeholder="instant_transfers" class="mono">
+      <div class="hint">Lowercase letters, digits and underscores. This is what services reference in code.</div>
+    </div>
+    <div class="field"><label for="description">Description</label><input id="description" name="description" value="{{ form.description or '' }}" placeholder="What does this flag gate?"></div>
+    <div class="grid g2">
+      <div class="field"><label for="owner_team">Owner team</label><input id="owner_team" name="owner_team" value="{{ form.owner_team or '' }}" placeholder="payments"></div>
+      <div class="field"><label for="environment">Environment</label>
+        <select id="environment" name="environment">{% for env in environments %}<option value="{{ env }}" {% if form.environment == env %}selected{% endif %}>{{ env }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="grid g2">
+      <div class="field"><label for="rollout_percent">Rollout %</label><input id="rollout_percent" name="rollout_percent" type="number" min="0" max="100" value="{{ form.rollout_percent if form.rollout_percent is not none else 0 }}"></div>
+      <div class="field"><span class="label">Initial state</span><label class="check" style="margin-top:8px"><input type="checkbox" name="enabled" value="true" {% if form.enabled %}checked{% endif %}> Enabled on creation</label></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <a class="btn" href="/flags">Cancel</a>
+      <button class="btn btn-primary" type="submit">{{ icon("plus") }} Create flag</button>
+    </div>
   </form>
-</div>
+</div></div>
 {% endblock %}

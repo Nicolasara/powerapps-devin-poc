@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}{{ "Not allowed" if status_code == 403 else "Not found" }}{% endblock %}
 {% block content %}
-<h1>{{ "Not allowed" if status_code == 403 else "Not found" }}</h1>
-<div class="card">
-  <p>{{ detail }}</p>
-  {% if status_code == 403 and user %}<p class="muted">You are signed in as {{ user.name }} ({{ user.role }}). <a href="/login">Switch user</a></p>{% endif %}
-  <a class="btn btn-secondary" href="/">Home</a>
-</div>
+<div class="card center-card"><div class="card-b" style="text-align:center;padding:36px">
+  <div class="confirm-icon" style="margin:0 auto 14px;{% if status_code == 403 %}background:var(--red-soft);color:var(--red){% endif %}">{{ icon("lock" if status_code == 403 else "alert") }}</div>
+  <h1 style="font-size:20px">{{ "You don't have access to that" if status_code == 403 else "Page not found" }}</h1>
+  <p class="muted">{{ detail }}</p>
+  {% if status_code == 403 and user %}<p class="small muted">Signed in as {{ user.name }} ({{ user.role }}). <a href="/login">Switch persona</a></p>{% endif %}
+  <a class="btn" href="/">{{ icon("arrow-left") }} Back to overview</a>
+</div></div>
 {% endblock %}

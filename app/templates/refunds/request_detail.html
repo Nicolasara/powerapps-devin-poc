@@ -1,61 +1,53 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, empty %}
 {% block title %}Refund #{{ rr.id }}{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/refunds">Refunds</a><span class="sep">/</span><a href="/refunds/tx/{{ tx.id }}">Transaction #{{ tx.id }}</a><span class="sep">/</span><span class="cur">Refund #{{ rr.id }}</span>{% endblock %}
 {% block content %}
-<p style="margin:0 0 8px"><a href="/refunds">&larr; Refunds</a> &middot; <a href="/refunds/tx/{{ tx.id }}">Transaction #{{ tx.id }}</a></p>
-<h1>Refund #{{ rr.id }}
-  <span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}" style="font-size:13px;vertical-align:middle">{{ rr.status | replace("_", " ") }}</span>
-</h1>
+<div class="ph">
+  <div><div class="title-row"><h1>Refund #{{ rr.id }} · {{ money(rr.amount_cents, tx.currency) }}</h1><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></div>
+  <p>{{ rr.reason_code | replace("_", " ") | capitalize }} · requested by {{ rr.requested_by_email }} on {{ rr.created_at.strftime("%b %d, %Y %H:%M") }} UTC</p></div>
+  <div class="actions"><a class="btn btn-ghost" href="/refunds/tx/{{ tx.id }}">{{ icon("arrow-left") }} Transaction</a></div>
+</div>
 
 {% if rr.status == "pending_approval" %}
-<div class="flash" style="background:#fef3c7;border-color:#fde68a;color:#92400e">
-  Waiting for a checker with <code>{{ rr.required_permission }}</code>. The requester cannot approve it.
-  {% if approval %}<a href="/approvals">Open approvals queue</a>{% endif %}
-</div>
+<div class="alert alert-warn">{{ icon("clock") }}<div>Waiting for a checker with <code>{{ rr.required_permission }}</code>. The requester cannot approve it. {% if approval %}<a href="/approvals">Open approvals inbox</a>{% endif %}</div></div>
 {% elif rr.status == "failed" %}
-<div class="flash error">Processor error: {{ rr.failure_reason or "unknown error" }}</div>
+<div class="alert alert-error">{{ icon("x-circle") }}<div><strong>Processor error:</strong> {{ rr.failure_reason or "unknown error" }}</div></div>
+{% elif rr.status == "executed" %}
+<div class="alert alert-success">{{ icon("check-circle") }}<div>Refunded at the processor{% if rr.executed_at %} on {{ rr.executed_at.strftime("%b %d, %Y %H:%M") }} UTC{% endif %}. Reference <code>{{ rr.processor_refund_id }}</code>.</div></div>
 {% endif %}
 
-<div class="grid">
-  <div class="kpi"><strong>{{ money(rr.amount_cents, tx.currency) }}</strong><span>Refund amount</span></div>
-  <div class="kpi"><strong>{{ money(tx.amount_cents, tx.currency) }}</strong><span>Original charge</span></div>
-  <div class="kpi"><strong>{{ money(tx.refunded_cents, tx.currency) }}</strong><span>Total refunded on charge</span></div>
-</div>
+<div class="split">
+  <div class="card">
+    <div class="card-h"><div><h2>Request</h2></div></div>
+    <div class="card-b" style="padding:6px 18px">
+      <table class="kv">
+        <tr><th>Transaction</th><td><a href="/refunds/tx/{{ tx.id }}">#{{ tx.id }}</a> &middot; {{ tx.merchant }} &middot; {{ tx.customer_name }} <span class="muted">&lt;{{ tx.customer_email }}&gt;</span></td></tr>
+        <tr><th>Original charge</th><td class="mono">{{ money(tx.amount_cents, tx.currency) }} <span class="muted small">({{ money(tx.refunded_cents, tx.currency) }} refunded in total)</span></td></tr>
+        <tr><th>Note</th><td>{% if rr.note %}{{ rr.note }}{% else %}<span class="faint">&mdash;</span>{% endif %}</td></tr>
+        <tr><th>Approval rule</th><td>{% if rr.required_permission %}Requires <code>{{ rr.required_permission }}</code>{% else %}Auto-approved (under threshold){% endif %}</td></tr>
+        {% if approval and decided_by %}
+        <tr><th>Decision</th><td><span class="badge {{ 'badge-green' if approval.status == 'approved' else 'badge-red' }}">{{ approval.status }}</span> by {{ decided_by.name }}{% if approval.decided_at %} <span class="muted small">at {{ approval.decided_at.strftime("%b %d, %H:%M") }} UTC</span>{% endif %}{% if approval.decision_reason %}<div class="small muted">&ldquo;{{ approval.decision_reason }}&rdquo;</div>{% endif %}</td></tr>
+        {% endif %}
+        <tr><th>Executed at</th><td>{% if rr.executed_at %}{{ rr.executed_at.strftime("%b %d, %Y %H:%M") }} UTC{% else %}<span class="faint">&mdash;</span>{% endif %}</td></tr>
+        <tr><th>Processor refund</th><td>{% if rr.processor_refund_id %}<code>{{ rr.processor_refund_id }}</code>{% else %}<span class="faint">&mdash;</span>{% endif %}</td></tr>
+        <tr><th>Idempotency key</th><td><code>{{ rr.idempotency_key }}</code></td></tr>
+      </table>
+    </div>
+  </div>
 
-<div class="card">
-  <h2>Request</h2>
-  <table class="table">
-    <tr><th style="width:200px">Transaction</th><td><a href="/refunds/tx/{{ tx.id }}">#{{ tx.id }}</a> &middot; {{ tx.merchant }} &middot; {{ tx.customer_name }} &lt;{{ tx.customer_email }}&gt;</td></tr>
-    <tr><th>Reason</th><td>{{ rr.reason_code | replace("_", " ") | capitalize }}</td></tr>
-    <tr><th>Note</th><td>{% if rr.note %}{{ rr.note }}{% else %}<span class="muted">&mdash;</span>{% endif %}</td></tr>
-    <tr><th>Requested by</th><td>{{ rr.requested_by_email }} <span class="muted">at {{ rr.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</span></td></tr>
-    <tr><th>Approval rule</th><td>{% if rr.required_permission %}Requires <code>{{ rr.required_permission }}</code>{% else %}Auto-approved (under threshold){% endif %}</td></tr>
-    {% if approval and decided_by %}
-    <tr><th>Decision</th><td>{{ approval.status | capitalize }} by {{ decided_by.name }} ({{ decided_by.email }}){% if approval.decided_at %} <span class="muted">at {{ approval.decided_at.strftime("%Y-%m-%d %H:%M") }} UTC</span>{% endif %}{% if approval.decision_reason %} &mdash; &ldquo;{{ approval.decision_reason }}&rdquo;{% endif %}</td></tr>
-    {% endif %}
-    <tr><th>Executed at</th><td>{% if rr.executed_at %}{{ rr.executed_at.strftime("%Y-%m-%d %H:%M") }} UTC{% else %}<span class="muted">&mdash;</span>{% endif %}</td></tr>
-    <tr><th>Processor refund</th><td>{% if rr.processor_refund_id %}<code>{{ rr.processor_refund_id }}</code>{% else %}<span class="muted">&mdash;</span>{% endif %}</td></tr>
-    <tr><th>Idempotency key</th><td><code>{{ rr.idempotency_key }}</code></td></tr>
-  </table>
-</div>
-
-<div class="card">
-  <h2>Audit trail</h2>
-  {% if trail %}
-  <table class="table">
-    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Reason</th></tr></thead>
-    <tbody>
-    {% for ev in trail %}
-      <tr>
-        <td class="muted">{{ ev.at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-        <td>{{ ev.actor_email }}</td>
-        <td><code>{{ ev.action }}</code></td>
-        <td>{% if ev.reason %}{{ ev.reason }}{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted" style="margin:0">No audit events.</p>
-  {% endif %}
+  <div class="card">
+    <div class="card-h"><div><h2>Audit trail</h2></div></div>
+    <div class="card-b">
+    {% if trail %}
+    <ul class="timeline">
+      {% for ev in trail %}
+      <li><div class="h"><strong>{{ (ev.actor_email or 'system').split('@')[0] }}</strong> <span class="muted">{{ ev.action.split('.')[-1].replace('_', ' ') }}</span></div>
+        <div class="m">{{ ev.at.strftime("%b %d, %H:%M:%S") }}{% if ev.reason %} · {{ ev.reason }}{% endif %}</div></li>
+      {% endfor %}
+    </ul>
+    {% else %}{{ empty("No audit events", "", "shield") }}{% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

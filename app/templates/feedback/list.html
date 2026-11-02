@@ -1,42 +1,30 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, empty %}
 {% block title %}Feedback queue{% endblock %}
+{% block crumbs %}<span class="sep">/</span><span class="cur">Feedback</span>{% endblock %}
 {% block content %}
-{% set badge = {"open": "badge-amber", "filed": "badge-green", "done": "badge-gray"} %}
-{% set kind_badge = {"bug": "badge-red", "friction": "badge-amber", "idea": "badge-gray"} %}
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-  <h1 style="margin:0">Feedback queue</h1>
-  <a class="btn btn-primary" href="/feedback/new">New feedback</a>
+{% set kind_badge = {"bug": "badge-red", "friction": "badge-amber", "idea": "badge-blue"} %}
+<div class="ph">
+  <div><h1>Feedback queue</h1><p>Anyone can report friction from any page. The platform team triages tickets into GitHub issues, and Devin opens the pull request.</p></div>
+  <div class="actions"><a class="btn btn-primary" href="/feedback/new">{{ icon("plus") }} New feedback</a></div>
 </div>
-<p class="muted">Anyone can report friction from any page using the footer link. Tickets get filed as GitHub issues, where Devin picks them up as normal engineering work.</p>
-<div class="card">
-  <form class="inline" method="get" action="/feedback">
-    <label for="status" style="display:inline;margin-right:6px">Status</label>
-    <select id="status" name="status">
-      <option value="" {% if not status %}selected{% endif %}>All</option>
-      {% for s in ["open", "filed", "done"] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-    </select>
-    <button class="btn btn-secondary" type="submit">Filter</button>
-  </form>
-</div>
-<div class="card" style="padding:0">
-  <table class="table">
-    <thead><tr><th>#</th><th>Title</th><th>Kind</th><th>Page</th><th>Reporter</th><th>Status</th><th>Created</th></tr></thead>
-    <tbody>
-    {% for t in tickets %}
-      <tr>
-        <td>{{ t.id }}</td>
-        <td><a href="/feedback/{{ t.id }}">{{ t.title }}</a></td>
-        <td><span class="badge {{ kind_badge.get(t.kind, 'badge-gray') }}">{{ t.kind }}</span></td>
-        <td><code>{{ t.page_path or "-" }}</code></td>
-        <td>{{ t.submitted_by_email }}</td>
-        <td><span class="badge {{ badge.get(t.status, 'badge-gray') }}">{{ t.status }}</span>
-          {% if t.github_issue_url %}<a href="{{ t.github_issue_url }}" target="_blank" rel="noopener">issue</a>{% endif %}</td>
-        <td class="muted">{{ t.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-      </tr>
+
+{% set cols = [("open", "Open", "amber"), ("filed", "Filed as issue", "indigo"), ("done", "Shipped", "green")] %}
+<div class="board">
+{% for key, label, tint in cols %}
+  {% set items = tickets | selectattr("status", "equalto", key) | list %}
+  <div class="col">
+    <div class="col-h"><span class="badge badge-{{ tint }}">{{ label }}</span><span class="n">{{ items | length }}</span></div>
+    {% for t in items %}
+    <a class="ticket" href="/feedback/{{ t.id }}">
+      <div class="meta"><span class="badge {{ kind_badge.get(t.kind, 'badge-gray') }}">{{ t.kind }}</span><span class="mono faint">{{ t.page_path or "" }}</span></div>
+      <div class="tt">{{ t.title }}</div>
+      <div class="meta"><span>#{{ t.id }}</span><span>·</span><span>{{ t.submitted_by_email.split("@")[0] }}</span><span>·</span><span>{{ t.created_at.strftime("%b %d") }}</span>{% if t.github_issue_url %}<span style="margin-left:auto;color:var(--accent);display:inline-flex;align-items:center;gap:4px">{{ icon("github") }} issue</span>{% endif %}</div>
+    </a>
     {% else %}
-      <tr><td colspan="7" class="muted">No tickets.</td></tr>
+    <div class="small faint" style="padding:12px 6px">Nothing here.</div>
     {% endfor %}
-    </tbody>
-  </table>
+  </div>
+{% endfor %}
 </div>
 {% endblock %}

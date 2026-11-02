@@ -16,6 +16,7 @@ from app.apps.feedback.routes import router as feedback_router
 from app.apps.flags import models as flags_models
 from app.apps.flags.routes import router as flags_router
 from app.apps.refunds import models as refunds_models
+from app.apps.refunds import service as refunds_service
 from app.apps.refunds.routes import router as refunds_router
 from app.platform import events, rbac
 from app.platform.approvals import ApprovalError, decide
@@ -27,7 +28,7 @@ from app.platform.auth import (
     set_session,
 )
 from app.platform.db import Base, SessionLocal, engine, get_db
-from app.platform.models import Approval, AuditEvent, Notification, User
+from app.platform.models import Approval, AuditEvent, Notification, User, utcnow
 from app.web import render, templates
 
 # Every app's models must be imported so Base.metadata knows all tables before create_all().
@@ -130,9 +131,27 @@ def logout():
 
 @app.get("/")
 def home(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    pending = db.scalar(select(func.count()).select_from(Approval).where(Approval.status == "pending")) or 0
-    audit_count = db.scalar(select(func.count()).select_from(AuditEvent)) or 0
-    return render(request, "home.html", user, pending=pending, audit_count=audit_count)
+    """Dashboard: shell-level summary of every app (the shell may read app tables; apps may not read each other's)."""
+    Flag, RefundRequest, FeedbackTicket = flags_models.Flag, refunds_models.RefundRequest, feedback_models.FeedbackTicket
+
+    def count(stmt) -> int:
+        return db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    start_of_day = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    refunded_today = db.scalar(
+        select(func.coalesce(func.sum(RefundRequest.amount_cents), 0)).where(
+            RefundRequest.status == "executed", RefundRequest.executed_at >= start_of_day
+        )
+    ) or 0
+    recent = db.scalars(select(AuditEvent).order_by(AuditEvent.id.desc()).limit(10)).all()
+    return render(
+        request, "home.html", user, now=utcnow(), recent=recent,
+        pending=count(select(Approval).where(Approval.status == "pending")),
+        flag_count=count(select(Flag)), flags_on=count(select(Flag).where(Flag.enabled.is_(True))),
+        refunded_today=refunds_service.fmt_money(refunded_today),
+        refund_pending=count(select(RefundRequest).where(RefundRequest.status == "pending_approval")),
+        open_feedback=count(select(FeedbackTicket).where(FeedbackTicket.status == "open")),
+    )
 
 
 # ---------------------------------------------------------------- approvals inbox (shared across apps)

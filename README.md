@@ -36,8 +36,9 @@ tables. They communicate through events.
   Each request carries an idempotency key, so a double submit never refunds twice. Requests that exceed the
   remaining refundable amount are rejected. The payment processor is a fake adapter. The app shows a KYC hint
   on a transaction, built from `kyc.decision.v1` events only.
-- **Feedback queue** (`/feedback`): any page has a footer link for reporting friction. Each ticket can be filed
-  as a pre-filled GitHub issue.
+- **Feedback queue** (`/feedback`): every page has a floating **Feedback** button for reporting friction. Tickets
+  land on a board (open / filed / shipped). Admins (the platform team) triage a ticket into a pre-filled GitHub
+  issue; operators never need to open GitHub.
 - **KYC review** is **design-only**. There is no KYC app in this repository. The refunds app consumes its
   `kyc.decision.v1` event contract, and the demo seed publishes sample events.
 
@@ -63,7 +64,7 @@ Open http://localhost:8000 and log in as one of the demo users:
 | April Approver (`april@corp.test`) | approver | approve prod flag changes and refunds under $1,000 |
 | Adam Admin (`adam@corp.test`) | admin | everything, including refunds of $1,000 or more |
 
-To point "File as GitHub issue" at your repository, set `GITHUB_REPO=owner/repo` before starting the server.
+"File as GitHub issue" targets `Nicolasara/powerapps-devin-poc` by default; set `GITHUB_REPO=owner/repo` to change it.
 
 ## How to test
 
@@ -80,10 +81,11 @@ queue. A smoke test renders every page as every role against the full demo seed.
 ## Demo flow
 
 1. Log in as **Oscar Operator** and use the app normally: toggle a dev flag, request a refund.
-2. When something is awkward, click **Send feedback about this page** in the footer and describe the friction.
-   The ticket records which page it came from.
-3. On the ticket, click **File as GitHub issue**. This opens a pre-filled issue with the page, the kind, the
-   reporter's role and the description. Paste the issue URL back to mark the ticket as filed.
+2. When something is awkward, click the floating **Feedback** button and describe the friction. The ticket
+   records which page it came from.
+3. Log in as **Adam Admin** (the platform team). On the ticket, click **File as GitHub issue**. This opens a
+   pre-filled issue with the page, the kind, the reporter's role and the description. Paste the issue URL back
+   to mark the ticket as filed.
 4. Devin picks up the issue, changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
 

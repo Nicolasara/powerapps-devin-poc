@@ -43,11 +43,14 @@ def test_anonymous_cannot_file_feedback(anon, db):
     assert db.scalar(select(FeedbackTicket)) is None
 
 
-def test_detail_links_to_prefilled_github_issue(login, monkeypatch):
+def test_detail_links_to_prefilled_github_issue_for_admins(login, monkeypatch):
     monkeypatch.setenv("GITHUB_REPO", "acme/internal-tools")
     oscar = login("oscar")
     title = "Refund search is slow & clunky"
-    detail = oscar.get(_create(oscar, title).headers["location"])
+    location = _create(oscar, title).headers["location"]
+    assert "issues/new" not in oscar.get(location).text  # operators file tickets here, not on GitHub
+
+    detail = login("adam").get(location)
     assert detail.status_code == 200
 
     page = html.unescape(detail.text)

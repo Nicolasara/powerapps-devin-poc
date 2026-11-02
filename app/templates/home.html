@@ -1,49 +1,86 @@
 {% extends "base.html" %}
-{% block title %}Home{% endblock %}
+{% from "_icons.html" import icon, stat, avatar %}
+{% block title %}Overview{% endblock %}
+{% block crumbs %}<span class="sep">/</span><span class="cur">Overview</span>{% endblock %}
 {% block content %}
-<h1>Internal tools</h1>
-<p class="muted">Code-first replacements for Power Apps tools. Each app is a small module in the repo; changes go through pull requests, CI and review.</p>
-
-<div class="grid">
-  <div class="kpi"><span class="label">Pending approvals</span><strong class="value">{{ pending }}</strong></div>
-  <div class="kpi"><span class="label">Audit events</span><strong class="value">{{ audit_count }}</strong></div>
-  <div class="kpi"><span class="label">Signed in as</span><strong class="value" style="font-size:18px">{{ user.role }}</strong></div>
-</div>
-
-<h2>Apps</h2>
-<div class="grid">
-  <div class="card">
-    <h3><a href="/flags">Feature flags</a></h3>
-    <p class="muted">Per-environment flags and rollouts. Production changes need a second approver.</p>
-    <a class="btn btn-secondary" href="/flags">Open</a>
+<div class="ph">
+  <div>
+    <h1>Good {{ "morning" if now.hour < 12 else ("afternoon" if now.hour < 18 else "evening") }}, {{ user.name.split(" ")[0] }}</h1>
+    <p>One console for the internal tools that used to live in Power Apps. Every app shares the same sign-in, roles, audit trail and approval inbox.</p>
   </div>
-  <div class="card">
-    <h3><a href="/refunds">Refunds</a></h3>
-    <p class="muted">Support agents request refunds; amounts above the threshold go to an approver, large ones to an admin.</p>
-    <a class="btn btn-secondary" href="/refunds">Open</a>
-  </div>
-  <div class="card">
-    <h3><a href="/approvals">Approvals</a> {% if pending %}<span class="badge badge-amber">{{ pending }} pending</span>{% endif %}</h3>
-    <p class="muted">One inbox for every maker/checker decision across apps.</p>
-    <a class="btn btn-secondary" href="/approvals">Open</a>
-  </div>
-  <div class="card">
-    <h3><a href="/feedback">Feedback</a></h3>
-    <p class="muted">Report friction from any page. Tickets become GitHub issues that Devin can pick up.</p>
-    <a class="btn btn-secondary" href="/feedback">Open</a>
+  <div class="actions">
+    <a class="btn" href="/feedback/new?page=/">{{ icon("chat") }} Report friction</a>
+    {% if 'flags.write' in perms %}<a class="btn btn-primary" href="/flags/new">{{ icon("plus") }} New flag</a>{% endif %}
   </div>
 </div>
 
-<h2>Shared foundation</h2>
-<div class="card">
-  <p>Every app is built on the same platform modules, so a new tool gets these without extra work:</p>
-  <table class="table">
-    <tr><th style="width:160px">Auth</th><td>Who you are. Dev login here; Entra ID OIDC in production.</td></tr>
-    <tr><th>RBAC</th><td>Roles map to permissions, checked server-side on every mutating route.</td></tr>
-    <tr><th>Audit</th><td>Append-only log of every change with before/after values and reason. <a href="/audit">View</a></td></tr>
-    <tr><th>Approvals</th><td>Maker/checker state machine with thresholds; the maker can never approve their own change.</td></tr>
-    <tr><th>Events</th><td>Transactional outbox, so apps react to each other without reading each other's tables.</td></tr>
-    <tr><th>Notify</th><td>Teams/Slack adapter (faked here; messages are stored). <a href="/notifications">View</a></td></tr>
-  </table>
+<div class="grid g4 mb">
+  {{ stat("Pending approvals", pending, "check-circle", "tint-amber" if pending else "tint-green", "waiting on a checker") }}
+  {{ stat("Feature flags", flag_count, "flag", "tint-indigo", flags_on ~ " enabled") }}
+  {{ stat("Refunded today", refunded_today, "dollar", "tint-green", refund_pending ~ " pending") }}
+  {{ stat("Open feedback", open_feedback, "chat", "tint-blue", "from the people using these tools") }}
+</div>
+
+<div class="split">
+  <div>
+    <div class="grid g2 mb">
+      <a class="tile" href="/flags">
+        <div class="ic tint-indigo">{{ icon("flag") }}</div>
+        <div class="t">Feature flags</div>
+        <p>Per-environment flags and rollouts. Production changes need a second approver; SDKs poll a cached snapshot.</p>
+        <div class="foot"><span>{{ flag_count }} flags</span><span class="go">Open {{ icon("arrow-right") }}</span></div>
+      </a>
+      <a class="tile" href="/refunds">
+        <div class="ic tint-green">{{ icon("refund") }}</div>
+        <div class="t">Refunds</div>
+        <p>Support requests a refund; thresholds route it to an approver or admin. Idempotent processor calls, every step audited.</p>
+        <div class="foot"><span>{{ refund_pending }} pending</span><span class="go">Open {{ icon("arrow-right") }}</span></div>
+      </a>
+      <a class="tile" href="/approvals">
+        <div class="ic tint-amber">{{ icon("check-circle") }}</div>
+        <div class="t">Approvals {% if pending %}<span class="badge badge-amber">{{ pending }}</span>{% endif %}</div>
+        <p>One maker/checker inbox across every app. Nobody can approve their own request.</p>
+        <div class="foot"><span>shared platform</span><span class="go">Open {{ icon("arrow-right") }}</span></div>
+      </a>
+      <a class="tile" href="/feedback">
+        <div class="ic tint-blue">{{ icon("chat") }}</div>
+        <div class="t">Feedback queue</div>
+        <p>Report friction from any page. The platform team triages tickets into GitHub issues that Devin picks up.</p>
+        <div class="foot"><span>{{ open_feedback }} open</span><span class="go">Open {{ icon("arrow-right") }}</span></div>
+      </a>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><div><h2>Shared foundation</h2><p>Built once; every new tool gets all of it on day one.</p></div></div>
+      <div class="card-b" style="padding:6px 18px">
+        <table class="kv">
+          <tr><th>Identity</th><td>Dev sign-in here; Entra ID (OIDC) in production. Group claims map to roles.</td></tr>
+          <tr><th>Roles</th><td>Viewer, operator, approver, admin. Permissions enforced server-side on every write.</td></tr>
+          <tr><th>Audit</th><td>Append-only log with before/after values and reason. <a href="/audit">View log</a></td></tr>
+          <tr><th>Approvals</th><td>Maker/checker state machine with thresholds and separation of duties.</td></tr>
+          <tr><th>Events</th><td>Transactional outbox: apps react to each other without reading each other's tables.</td></tr>
+          <tr><th>Notifications</th><td>Teams/Slack adapter (stubbed here). <a href="/notifications">View feed</a></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>Recent activity</h2><p>Latest audit events across all apps</p></div><a class="btn btn-sm btn-ghost" href="/audit">View all</a></div>
+    <ul class="feed">
+      {% for e in recent %}
+      {% set tint = 'tint-indigo' if e.entity_type == 'flag' else ('tint-green' if e.entity_type.startswith('refund') else ('tint-amber' if e.entity_type == 'approval' else 'tint-slate')) %}
+      <li>
+        <div class="dot {{ tint }}">{{ icon('flag' if e.entity_type == 'flag' else ('refund' if e.entity_type.startswith('refund') else ('check-circle' if e.entity_type == 'approval' else 'activity'))) }}</div>
+        <div>
+          <div class="what"><strong>{{ (e.actor_email or 'system').split('@')[0] }}</strong> <span class="muted">{{ e.action.replace('.', ' · ') }}</span> <code>{{ e.entity_type }} {{ e.entity_id }}</code></div>
+          <div class="when">{{ e.at.strftime("%b %d, %H:%M") }}{% if e.reason %} · {{ e.reason }}{% endif %}</div>
+        </div>
+      </li>
+      {% else %}
+      <li><div class="muted">Nothing yet.</div></li>
+      {% endfor %}
+    </ul>
+  </div>
 </div>
 {% endblock %}
