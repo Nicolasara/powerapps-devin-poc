@@ -189,8 +189,18 @@ def on_kyc_decision(db: Session, payload: dict) -> None:
         risk_band=str(payload.get("risk_band", "unknown")),
         outcome=str(payload.get("outcome", "unknown")),
         reviewed_manually=bool(payload.get("reviewed_manually", False)),
+        case_id=int(payload["case_id"]) if payload.get("case_id") is not None else None,
         at=_parse_at(payload.get("at")),
     ))
+
+
+def kyc_case_link(db: Session, customer_email: str) -> str | None:
+    """Where to review this customer's KYC: the case the event pointed at, or a search in the KYC queue."""
+    signal = db.scalars(select(KycSignal).where(KycSignal.customer_email == customer_email.lower())
+                        .order_by(KycSignal.at.desc())).first()
+    if signal is None:
+        return None
+    return f"/kyc/{signal.case_id}" if signal.case_id else f"/kyc?status=all&q={customer_email}"
 
 
 def kyc_hint(db: Session, customer_email: str) -> str | None:

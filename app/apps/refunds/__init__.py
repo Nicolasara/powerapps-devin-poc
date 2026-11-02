@@ -79,7 +79,6 @@ def seed(db: Session) -> None:
             req(adam, txs[6], 2_000, "other", "Price-match adjustment")
 
     kyc = [
-        (txs[2].customer_email, "high", "approved", True, now - timedelta(days=12)),
         (txs[5].customer_email, "medium", "approved", False, now - timedelta(days=30)),
         (txs[9].customer_email, "low", "approved", False, now - timedelta(days=4)),
     ]

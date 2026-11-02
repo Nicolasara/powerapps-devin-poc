@@ -222,3 +222,27 @@ def stats(db: Session) -> dict:
         "approved_today": count(KycCase.status == "approved", KycCase.decided_at >= today),
         "rejected": count(KycCase.status == "rejected"),
     }
+
+
+# ---------------------------------------------------------------- documents (vendor vault, short-lived signed links)
+
+DOC_KINDS = ("document", "selfie")
+DOC_TTL_SECONDS = 300
+
+
+def document_url(case: KycCase, kind: str, now: int | None = None) -> str:
+    """Short-lived signed link, the same idea as an S3 presigned URL: nobody can bookmark or share a PII image."""
+    import time
+    exp = (now or int(time.time())) + DOC_TTL_SECONDS
+    msg = f"{case.id}:{kind}:{exp}".encode()
+    sig = hmac.new((webhook_secret() or "no-secret").encode(), msg, hashlib.sha256).hexdigest()[:32]
+    return f"/kyc/{case.id}/documents/{kind}?exp={exp}&sig={sig}"
+
+
+def document_link_valid(case: KycCase, kind: str, exp: int, sig: str, now: int | None = None) -> bool:
+    import time
+    if kind not in DOC_KINDS or exp < (now or int(time.time())):
+        return False
+    msg = f"{case.id}:{kind}:{exp}".encode()
+    good = hmac.new((webhook_secret() or "no-secret").encode(), msg, hashlib.sha256).hexdigest()[:32]
+    return hmac.compare_digest(good, sig)

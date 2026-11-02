@@ -27,6 +27,8 @@ _SEED = [
      "pass", _CLEAN, 1),
     ("alloy_1006", "Casey Nguyen", "casey.nguyen@example.com", "19 oak ct, austin, tx", _RING_FP, "203.0.113.9",
      "pass", _CLEAN, 0),
+    ("alloy_1000", "Sofia Okafor", "sofia.okafor@example.com", "61 bay st, san diego, ca", "fp_e5", "198.51.100.20",
+     "fail", {"document": "fail", "selfie": "pass", "sanctions": "pass", "address": "pass"}, 12),
     ("alloy_1007", "Noah Patel", "noah.patel@example.com", "5 river ln, denver, co", "fp_d4", "198.51.100.13",
      "pass", _CLEAN, 0),
 ]
@@ -50,6 +52,9 @@ def seed(db: Session) -> None:
         case.created_at = now - timedelta(days=days, hours=3)
         if case.status != "pending":
             case.decided_at = case.created_at
+        if ref == "alloy_1000" and april:
+            service.decide(db, april, case, approve=True, reason="Document re-verified by phone with the customer")
+            case.decided_at = case.created_at + timedelta(hours=5)
         if ref == "alloy_1003" and april:
             # Rejected before the ring applied; the later applicants inherit the risk.
             service.decide(db, april, case, approve=False, reason="Document failed vendor check; address mismatch")

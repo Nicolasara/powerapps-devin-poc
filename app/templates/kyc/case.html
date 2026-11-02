@@ -35,7 +35,8 @@
           <table class="kv">
             {% for k, v in case.vendor_checks.items() %}<tr><th>{{ k | capitalize }}</th><td><span class="badge {{ vendor_badges.get(v, 'badge-gray') }}">{{ v }}</span></td></tr>{% else %}<tr><td class="muted">No check detail from vendor.</td></tr>{% endfor %}
           </table>
-          <p class="hint" style="margin:10px 0 6px">Documents and selfies stay in the vendor's vault; a production build opens them through short-lived signed URLs with the access logged.</p>
+          {% if 'kyc.review' in perms %}<div style="display:flex;gap:8px;margin:12px 0 6px"><a class="btn btn-sm" href="{{ docs['document'] }}">{{ icon("external") }} View ID document</a><a class="btn btn-sm" href="{{ docs['selfie'] }}">{{ icon("user") }} View selfie</a></div>{% endif %}
+          <p class="hint" style="margin:6px 0">Images stay in the vendor's vault. Links are signed and expire in 5 minutes; every view is written to the audit log.</p>
         </div>
       </div>
     </div>

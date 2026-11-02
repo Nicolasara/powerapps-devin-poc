@@ -10,7 +10,7 @@
 </div>
 
 {% if kyc_hint %}
-<div class="alert alert-warn">{{ icon("alert") }}<div><strong>{{ kyc_hint }}</strong> &mdash; review the customer's history before refunding. <span class="muted">Signal received from the KYC app via <code>kyc.decision.v1</code>; no cross-app table reads.</span></div></div>
+<div class="alert alert-error" style="align-items:center">{{ icon("alert") }}<div style="flex:1"><strong>{{ kyc_hint }}</strong> &mdash; review the customer's history before refunding. <span class="muted">Signal received from the KYC app via <code>kyc.decision.v1</code>.</span></div>{% if kyc_link and 'kyc.read' in perms %}<a class="btn btn-sm btn-danger" href="{{ kyc_link }}">Review KYC case {{ icon("arrow-right") }}</a>{% endif %}</div>
 {% endif %}
 {% if error %}<div class="alert alert-error">{{ icon("x-circle") }}<span>{{ error }}</span></div>{% endif %}
 

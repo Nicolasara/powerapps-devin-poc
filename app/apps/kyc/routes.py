@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.platform import events
+from app.platform.audit import audit
 from app.platform.auth import require
 from app.platform.db import get_db
 from app.platform.models import AuditEvent, User
@@ -84,7 +85,19 @@ def case_detail(request: Request, case_id: int, db: Db, user: Reader, error: str
         select(AuditEvent).where(AuditEvent.entity_type == "kyc_case", AuditEvent.entity_id == str(case.id))
         .order_by(AuditEvent.id.desc())
     ).all()
-    return render(request, "kyc/case.html", user, **_ctx(case=case, linked=linked, trail=trail, error=error))
+    docs = {k: service.document_url(case, k) for k in service.DOC_KINDS}
+    return render(request, "kyc/case.html", user, **_ctx(case=case, linked=linked, trail=trail, error=error, docs=docs))
+
+
+@router.get("/{case_id}/documents/{kind}")
+def view_document(request: Request, case_id: int, kind: str, exp: int, sig: str, db: Db, user: Reviewer):
+    """Renders the applicant's document through a short-lived signed link and logs who looked at it."""
+    case = _get(db, case_id)
+    if not service.document_link_valid(case, kind, exp, sig):
+        raise HTTPException(status_code=403, detail="document link expired or invalid; reopen the case")
+    audit(db, user, "kyc.document_viewed", "kyc_case", case.id, after={"kind": kind})
+    db.commit()
+    return render(request, "kyc/document.html", user, **_ctx(case=case, kind=kind, expires_at=exp))
 
 
 @router.post("/{case_id}/decide")
