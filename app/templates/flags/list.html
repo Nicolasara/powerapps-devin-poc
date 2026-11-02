@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% from "_icons.html" import th_sort, icon, empty %}
-{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar, switch %}
+{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar, stepper, plan_summary, roll_buttons %}
 {% block title %}Feature flags{% endblock %}
 {% block crumbs %}<span class="sep">/</span><span class="cur">Feature flags</span>{% endblock %}
 {% block content %}
 <div class="ph">
-  <div><h1>Feature flags</h1><p>A flag starts in dev and is promoted forward: dev → staging → prod. Prod changes need a second approver; services read <code>/flags/api/snapshot</code>.</p></div>
+  <div><h1>Feature flags</h1><p>Every flag follows a rollout plan (default dev 100 → staging 100 → prod 10 → 50 → 100). Roll forward takes the next step; roll back steps down immediately. Prod steps need a second approver; services read <code>/flags/api/snapshot</code>.</p></div>
   <div class="actions">
     <a class="btn" href="/flags/api/snapshot?environment=prod" target="_blank" rel="noopener">{{ icon("zap") }} Prod snapshot</a>
     {% if 'flags.write' in perms %}<a class="btn btn-primary" href="/flags/new">{{ icon("plus") }} New flag</a>{% endif %}
@@ -26,7 +26,8 @@
     <thead>
       <tr>
         {{ th_sort("Flag", "flag", sort, dir, sort_url) }}
-        {% for env in environments %}<th class="envcol">{{ env_badge(env) }}</th>{% if not loop.last %}<th class="arrow"></th>{% endif %}{% endfor %}
+        {% for env in environments %}<th class="envcol">{{ env_badge(env) }}</th>{% endfor %}
+        {{ th_sort("Rollout plan", "stage", sort, dir, sort_url, "plancol") }}
       </tr>
     </thead>
     <tbody>
@@ -53,21 +54,15 @@
             <div class="envcell faint small">{% if pending_new.get((row.key, env)) %}<span class="badge badge-amber">Pending</span>{% else %}not yet in {{ env }}{% endif %}</div>
             {% endif %}
           </td>
-          {% if not loop.last %}
-          {% set nxt = environments[loop.index] %}
-          {% set tgt = row.envs[nxt] %}
-          <td class="arrow">
-            {% if 'flags.write' in perms and f and (not tgt or tgt.state() != f.state()) and not (tgt and pending.get(tgt.id)) and not pending_new.get((row.key, nxt)) %}
-            <form class="inline" method="post" action="/flags/promote">
-              <input type="hidden" name="key" value="{{ row.key }}"><input type="hidden" name="to_env" value="{{ nxt }}">
-              <button class="btn btn-sm promote" type="submit" title="Copy {{ env }} state ({{ 'ON' if f.enabled else 'OFF' }}, {{ f.rollout_percent }}%) to {{ nxt }}{% if nxt == 'prod' %} (needs approval){% endif %}">Promote {{ icon("arrow-right") }}</button>
-            </form>
-            {% else %}
-            <span class="faint">{{ icon("chevron-right") }}</span>
-            {% endif %}
-          </td>
-          {% endif %}
         {% endfor %}
+        {% set plan = plans[row.key] %}
+        <td class="plancol">
+          <div class="plancell">
+            {{ stepper(plan, compact=True) }}
+            <div class="small">{{ plan_summary(plan) }}{% if plan.pending_next %} <span class="badge badge-amber">Pending</span>{% endif %}</div>
+            {% if 'flags.write' in perms %}{{ roll_buttons(row.key, plan) }}{% endif %}
+          </div>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -75,12 +70,13 @@
   {% else %}{{ empty("No flags" ~ (" live in " ~ environment if environment else ""), "Create one to get started.", "flag") }}{% endif %}
   </div>
 </div>
-<p class="small muted">Promote copies the previous environment's state forward. Promotions and toggles in prod create an approval request for someone else with <code>flags.approve</code>.</p>
+<p class="small muted">Roll forward moves a flag to the next step of its plan; prod steps create an approval request for someone else with <code>flags.approve</code>. Roll back reduces exposure, so it applies immediately everywhere. Stage toggles and rollout overrides live on the flag page.</p>
 {% endblock %}
 {% block head %}
 <style>
 .pipeline th.envcol,.pipeline td.envcol{width:190px}
-.pipeline th.arrow,.pipeline td.arrow{width:110px;text-align:center;padding-left:4px;padding-right:4px}
+.pipeline th.plancol,.pipeline td.plancol{width:260px}
+.plancell{display:grid;gap:8px}
 .envcell{display:grid;gap:6px}
 .envtop{display:flex;align-items:center;gap:8px}
 .btn.promote{color:var(--accent-2);border-color:#c7d2fe;background:var(--accent-soft)}

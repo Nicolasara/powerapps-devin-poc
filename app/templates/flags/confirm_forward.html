@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "flags/_macros.html" import env_badge %}
+{% block title %}Confirm roll forward: {{ key }}{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/flags">Feature flags</a><span class="sep">/</span><a href="/flags/{{ first.id }}">{{ key }}</a><span class="sep">/</span><span class="cur">Confirm</span>{% endblock %}
+{% block content %}
+<div class="card center-card"><div class="card-b" style="padding:28px">
+  <div class="confirm-icon">{{ icon("alert") }}</div>
+  <h1 style="font-size:19px">Are you sure?</h1>
+  <p class="muted" style="margin:6px 0 0">You're about to roll <span class="mono">{{ key }}</span> forward to {{ env_badge(plan.next.environment) }} <strong>{{ plan.next.rollout_percent }}%</strong> (step {{ plan.position + 1 }} of {{ plan.total }}). This applies immediately.</p>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+    <a class="btn" href="{{ request.query_params.get('back_to', '/flags') }}">Cancel</a>
+    <form class="inline" method="post" action="/flags/plan/{{ key }}/forward"><input type="hidden" name="back_to" value="{{ request.query_params.get('back_to', '/flags') }}"><button class="btn btn-primary" type="submit">Yes, roll forward</button></form>
+  </div>
+</div></div>
+{% endblock %}
