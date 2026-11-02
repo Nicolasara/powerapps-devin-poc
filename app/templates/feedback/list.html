@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Feedback queue{% endblock %}
+{% block content %}
+{% set badge = {"open": "badge-amber", "filed": "badge-green", "done": "badge-gray"} %}
+{% set kind_badge = {"bug": "badge-red", "friction": "badge-amber", "idea": "badge-gray"} %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <h1 style="margin:0">Feedback queue</h1>
+  <a class="btn btn-primary" href="/feedback/new">New feedback</a>
+</div>
+<p class="muted">Anyone can report friction from any page using the footer link. Tickets get filed as GitHub issues, where Devin picks them up as normal engineering work.</p>
+<div class="card">
+  <form class="inline" method="get" action="/feedback">
+    <label for="status" style="display:inline;margin-right:6px">Status</label>
+    <select id="status" name="status">
+      <option value="" {% if not status %}selected{% endif %}>All</option>
+      {% for s in ["open", "filed", "done"] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-secondary" type="submit">Filter</button>
+  </form>
+</div>
+<div class="card" style="padding:0">
+  <table class="table">
+    <thead><tr><th>#</th><th>Title</th><th>Kind</th><th>Page</th><th>Reporter</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+    {% for t in tickets %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td><a href="/feedback/{{ t.id }}">{{ t.title }}</a></td>
+        <td><span class="badge {{ kind_badge.get(t.kind, 'badge-gray') }}">{{ t.kind }}</span></td>
+        <td><code>{{ t.page_path or "-" }}</code></td>
+        <td>{{ t.submitted_by_email }}</td>
+        <td><span class="badge {{ badge.get(t.status, 'badge-gray') }}">{{ t.status }}</span>
+          {% if t.github_issue_url %}<a href="{{ t.github_issue_url }}" target="_blank" rel="noopener">issue</a>{% endif %}</td>
+        <td class="muted">{{ t.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="muted">No tickets.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

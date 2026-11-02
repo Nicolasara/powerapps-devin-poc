@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}New feedback{% endblock %}
+{% block content %}
+<h1>Send feedback</h1>
+<div class="card">
+  <form method="post" action="/feedback">
+    <label for="page_path">Page</label>
+    <input type="text" id="page_path" name="page_path" value="{{ page }}" placeholder="/refunds">
+    <label for="kind">Kind</label>
+    <select id="kind" name="kind">
+      {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+    </select>
+    <label for="title">Title</label>
+    <input type="text" id="title" name="title" required maxlength="300" placeholder="What's getting in your way?">
+    <label for="body">Description</label>
+    <textarea id="body" name="body" placeholder="What were you trying to do, and what happened instead?"></textarea>
+    <div style="margin-top:14px">
+      <button class="btn btn-primary" type="submit">Submit</button>
+      <a class="btn btn-secondary" href="{{ page or '/feedback' }}">Cancel</a>
+    </div>
+  </form>
+</div>
+<p class="muted">Submitted as {{ user.email }} ({{ user.role }}).</p>
+{% endblock %}

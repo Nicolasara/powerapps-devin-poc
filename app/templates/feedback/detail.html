@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Feedback #{{ ticket.id }}{% endblock %}
+{% block content %}
+{% set badge = {"open": "badge-amber", "filed": "badge-green", "done": "badge-gray"} %}
+<p><a href="/feedback">&larr; Feedback queue</a></p>
+<h1>#{{ ticket.id }} {{ ticket.title }}</h1>
+<div class="card">
+  <table class="table">
+    <tr><th style="width:160px">Status</th><td><span class="badge {{ badge.get(ticket.status, 'badge-gray') }}">{{ ticket.status }}</span></td></tr>
+    <tr><th>Kind</th><td>{{ ticket.kind }}</td></tr>
+    <tr><th>Page</th><td>{% if ticket.page_path %}<a href="{{ ticket.page_path }}"><code>{{ ticket.page_path }}</code></a>{% else %}<span class="muted">-</span>{% endif %}</td></tr>
+    <tr><th>Reporter</th><td>{{ reporter.name if reporter else ticket.submitted_by_email }} <span class="muted">({{ reporter_role }})</span></td></tr>
+    <tr><th>Created</th><td>{{ ticket.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</td></tr>
+    <tr><th>GitHub issue</th><td>{% if ticket.github_issue_url %}<a href="{{ ticket.github_issue_url }}" target="_blank" rel="noopener">{{ ticket.github_issue_url }}</a>{% else %}<span class="muted">not filed yet</span>{% endif %}</td></tr>
+  </table>
+  <h3 style="margin-top:16px">Description</h3>
+  <pre>{{ ticket.body or "(no description)" }}</pre>
+</div>
+
+<div class="card">
+  <h2>File as GitHub issue</h2>
+  <p class="muted">Opens a pre-filled issue in <code>{{ repo }}</code>. Once created, paste the issue URL below to link it.</p>
+  <a class="btn btn-primary" href="{{ issue_url }}" target="_blank" rel="noopener">File as GitHub issue</a>
+  <form method="post" action="/feedback/{{ ticket.id }}/mark-filed" style="margin-top:14px">
+    <label for="github_issue_url">Issue URL</label>
+    <input type="url" id="github_issue_url" name="github_issue_url" required
+           value="{{ ticket.github_issue_url or '' }}" placeholder="https://github.com/{{ repo }}/issues/123">
+    <div style="margin-top:10px"><button class="btn btn-secondary" type="submit">Mark as filed</button></div>
+  </form>
+</div>
+{% endblock %}

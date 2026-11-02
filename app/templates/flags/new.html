@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}New flag{% endblock %}
+{% block content %}
+<h1>New feature flag</h1>
+{% if error %}<div class="flash" style="border-color:#dc2626;color:#991b1b;">{{ error }}</div>{% endif %}
+<div class="card" style="max-width:640px;">
+  <form method="post" action="/flags">
+    <p>
+      <label for="key">Key</label><br>
+      <input id="key" name="key" required pattern="[a-z0-9]+(_[a-z0-9]+)*" maxlength="100"
+             value="{{ form.key or '' }}" placeholder="instant_transfers" style="width:100%;">
+      <br><span class="muted" style="font-size:.85em;">Lowercase letters, digits and underscores.</span>
+    </p>
+    <p>
+      <label for="description">Description</label><br>
+      <input id="description" name="description" value="{{ form.description or '' }}" style="width:100%;">
+    </p>
+    <p>
+      <label for="owner_team">Owner team</label><br>
+      <input id="owner_team" name="owner_team" value="{{ form.owner_team or '' }}" placeholder="payments" style="width:100%;">
+    </p>
+    <p>
+      <label for="environment">Environment</label><br>
+      <select id="environment" name="environment">
+        {% for env in environments %}
+        <option value="{{ env }}" {% if form.environment == env %}selected{% endif %}>{{ env }}</option>
+        {% endfor %}
+      </select>
+    </p>
+    <p>
+      <label><input type="checkbox" name="enabled" value="true" {% if form.enabled %}checked{% endif %}> Enabled</label>
+    </p>
+    <p>
+      <label for="rollout_percent">Rollout %</label><br>
+      <input id="rollout_percent" name="rollout_percent" type="number" min="0" max="100"
+             value="{{ form.rollout_percent if form.rollout_percent is not none else 0 }}">
+    </p>
+    <p class="muted" style="font-size:.85em;">New prod flags are created disabled at 0%. Enabling them requires approval.</p>
+    <button class="btn btn-primary" type="submit">Create flag</button>
+    <a class="btn btn-secondary" href="/flags">Cancel</a>
+  </form>
+</div>
+{% endblock %}

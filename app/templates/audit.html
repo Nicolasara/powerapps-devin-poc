@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="muted">Append-only. Latest 200 events{% if entity_type %} for <code>{{ entity_type }}</code>{% endif %}.</p>
+<div class="card">
+  <form class="inline" method="get" action="/audit">
+    <label for="entity_type" style="display:inline;margin-right:6px">Entity type</label>
+    <select id="entity_type" name="entity_type">
+      <option value="">All</option>
+      {% for et in entity_types %}<option value="{{ et }}" {% if et == entity_type %}selected{% endif %}>{{ et }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-secondary" type="submit">Filter</button>
+  </form>
+</div>
+<div class="card" style="padding:0">
+  <table class="table">
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Before</th><th>After</th><th>Reason</th></tr></thead>
+    <tbody>
+    {% for e in rows %}
+      <tr>
+        <td class="muted" style="white-space:nowrap">{{ e.at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td>{{ e.actor_email }}</td>
+        <td><code>{{ e.action }}</code></td>
+        <td>{{ e.entity_type }} {{ e.entity_id }}</td>
+        <td>{% if e.before %}<pre>{{ e.before | tojson }}</pre>{% endif %}</td>
+        <td>{% if e.after %}<pre>{{ e.after | tojson }}</pre>{% endif %}</td>
+        <td class="muted">{{ e.reason or "" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="muted">No events.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

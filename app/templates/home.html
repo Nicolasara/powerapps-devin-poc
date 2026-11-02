@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<h1>Internal tools</h1>
+<p class="muted">Code-first replacements for Power Apps tools. Each app is a small module in the repo; changes go through pull requests, CI and review.</p>
+
+<div class="grid">
+  <div class="kpi"><span class="label">Pending approvals</span><strong class="value">{{ pending }}</strong></div>
+  <div class="kpi"><span class="label">Audit events</span><strong class="value">{{ audit_count }}</strong></div>
+  <div class="kpi"><span class="label">Signed in as</span><strong class="value" style="font-size:18px">{{ user.role }}</strong></div>
+</div>
+
+<h2>Apps</h2>
+<div class="grid">
+  <div class="card">
+    <h3><a href="/flags">Feature flags</a></h3>
+    <p class="muted">Per-environment flags and rollouts. Production changes need a second approver.</p>
+    <a class="btn btn-secondary" href="/flags">Open</a>
+  </div>
+  <div class="card">
+    <h3><a href="/refunds">Refunds</a></h3>
+    <p class="muted">Support agents request refunds; amounts above the threshold go to an approver, large ones to an admin.</p>
+    <a class="btn btn-secondary" href="/refunds">Open</a>
+  </div>
+  <div class="card">
+    <h3><a href="/approvals">Approvals</a> {% if pending %}<span class="badge badge-amber">{{ pending }} pending</span>{% endif %}</h3>
+    <p class="muted">One inbox for every maker/checker decision across apps.</p>
+    <a class="btn btn-secondary" href="/approvals">Open</a>
+  </div>
+  <div class="card">
+    <h3><a href="/feedback">Feedback</a></h3>
+    <p class="muted">Report friction from any page. Tickets become GitHub issues that Devin can pick up.</p>
+    <a class="btn btn-secondary" href="/feedback">Open</a>
+  </div>
+</div>
+
+<h2>Shared foundation</h2>
+<div class="card">
+  <p>Every app is built on the same platform modules, so a new tool gets these without extra work:</p>
+  <table class="table">
+    <tr><th style="width:160px">Auth</th><td>Who you are. Dev login here; Entra ID OIDC in production.</td></tr>
+    <tr><th>RBAC</th><td>Roles map to permissions, checked server-side on every mutating route.</td></tr>
+    <tr><th>Audit</th><td>Append-only log of every change with before/after values and reason. <a href="/audit">View</a></td></tr>
+    <tr><th>Approvals</th><td>Maker/checker state machine with thresholds; the maker can never approve their own change.</td></tr>
+    <tr><th>Events</th><td>Transactional outbox, so apps react to each other without reading each other's tables.</td></tr>
+    <tr><th>Notify</th><td>Teams/Slack adapter (faked here; messages are stored). <a href="/notifications">View</a></td></tr>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar %}
+{% block title %}{{ flag.key }} ({{ flag.environment }}){% endblock %}
+{% block content %}
+<p><a href="/flags">&larr; All flags</a></p>
+<h1><code>{{ flag.key }}</code> {{ env_badge(flag.environment) }}</h1>
+{% if notice %}<div class="flash">{{ notice }}</div>{% endif %}
+
+<div class="grid">
+  <div class="card kpi">
+    <div class="muted">State</div>
+    <div>{{ state_badge(flag) }}</div>
+  </div>
+  <div class="card kpi">
+    <div class="muted">Rollout</div>
+    <div>{{ rollout_bar(flag.rollout_percent) }}</div>
+  </div>
+  <div class="card kpi">
+    <div class="muted">Owner team</div>
+    <div>{{ flag.owner_team or '-' }}</div>
+  </div>
+  <div class="card kpi">
+    <div class="muted">Last updated</div>
+    <div>{{ flag.updated_at.strftime('%Y-%m-%d %H:%M') if flag.updated_at else '' }}</div>
+    <div class="muted" style="font-size:.85em;">{{ flag.updated_by_email }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <p>{{ flag.description or 'No description.' }}</p>
+
+  {% if pending %}
+  <div class="flash">
+    <span class="badge badge-amber">Pending approval</span>
+    {% for a in pending %}{{ a.summary }} (request #{{ a.id }}){% if not loop.last %}; {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if 'flags.write' in perms %}
+  <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+    {% if flag.environment == 'prod' %}
+    <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
+      <button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit" {% if pending %}disabled{% endif %}>
+        Request {{ 'disable' if flag.enabled else 'enable' }}
+      </button>
+    </form>
+    {% else %}
+    <a class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" href="/flags/{{ flag.id }}/toggle/confirm">
+      {{ 'Disable' if flag.enabled else 'Enable' }}
+    </a>
+    {% endif %}
+
+    <form class="inline" method="post" action="/flags/{{ flag.id }}/rollout">
+      <label for="rollout_percent">Rollout %</label>
+      <input id="rollout_percent" name="rollout_percent" type="number" min="0" max="100"
+             value="{{ flag.rollout_percent }}" style="width:5rem;">
+      <button class="btn btn-secondary" type="submit" {% if flag.environment == 'prod' and pending %}disabled{% endif %}>
+        {{ 'Request rollout change' if flag.environment == 'prod' else 'Set rollout' }}
+      </button>
+    </form>
+  </div>
+  {% if flag.environment == 'prod' %}
+  <p class="muted" style="font-size:.85em;">Prod changes are applied once a different user with <code>flags.approve</code> approves them.</p>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>History</h2>
+  {% if history %}
+  <table class="table">
+    <thead>
+      <tr><th>When</th><th>Who</th><th>Action</th><th>Before</th><th>After</th><th>Reason</th></tr>
+    </thead>
+    <tbody>
+      {% for ev in history %}
+      <tr>
+        <td style="white-space:nowrap;">{{ ev.at.strftime('%Y-%m-%d %H:%M:%S') if ev.at else '' }}</td>
+        <td>{{ ev.actor_email }}</td>
+        <td><span class="badge badge-gray">{{ ev.action }}</span></td>
+        <td>{% if ev.before %}{% for k, v in ev.before.items() %}<div><span class="muted">{{ k }}:</span> {{ v }}</div>{% endfor %}{% else %}<span class="muted">-</span>{% endif %}</td>
+        <td>{% if ev.after %}{% for k, v in ev.after.items() %}<div><span class="muted">{{ k }}:</span> {{ v }}</div>{% endfor %}{% else %}<span class="muted">-</span>{% endif %}</td>
+        <td class="muted">{{ ev.reason or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No changes recorded.</p>
+  {% endif %}
+</div>
+{% endblock %}

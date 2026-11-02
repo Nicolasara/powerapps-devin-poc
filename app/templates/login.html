@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<h1>Log in</h1>
+<div class="flash">
+  <strong>Development login.</strong> This page stands in for Microsoft Entra ID SSO. In production the OIDC callback
+  maps Entra group claims to a role; everything downstream (permission checks, audit, approvals) stays the same.
+</div>
+{% if user %}<p class="muted">Currently logged in as {{ user.name }} ({{ user.role }}). Pick another user to switch.</p>{% endif %}
+<div class="card" style="padding:0">
+  <table class="table">
+    <thead><tr><th>User</th><th>Role</th><th>Permissions</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td><strong>{{ u.name }}</strong><br><span class="muted">{{ u.email }}</span></td>
+        <td><span class="badge {{ {'viewer': 'badge-gray', 'operator': 'badge-amber', 'approver': 'badge-green', 'admin': 'badge-red'}.get(u.role, 'badge-gray') }}">{{ u.role }}</span></td>
+        <td class="muted" style="font-size:12px">{{ role_perms[u.id] | join(", ") }}</td>
+        <td>
+          <form class="inline" method="post" action="/login">
+            <input type="hidden" name="user_id" value="{{ u.id }}">
+            <input type="hidden" name="next" value="{{ next }}">
+            <button class="btn btn-primary" type="submit">Log in as {{ u.name.split(" ")[0] }}</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">No users yet. Run <code>python -m app.seed</code>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

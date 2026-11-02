@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Approvals{% endblock %}
+{% block content %}
+<h1>Approvals</h1>
+<p class="muted">Pending maker/checker requests from every app. You can't approve your own request, and you need the permission listed.</p>
+
+<div class="card" style="padding:0">
+  <table class="table">
+    <thead><tr><th>#</th><th>Summary</th><th>Kind</th><th>Requested by</th><th>Requires</th><th style="width:330px">Decision</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      {% set a = row.a %}
+      {% set maker = users.get(a.requested_by) %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.summary }}<br><span class="muted" style="font-size:12px">{{ a.entity_type }} {{ a.entity_id }} · {{ a.requested_at.strftime("%Y-%m-%d %H:%M") }}</span></td>
+        <td><code>{{ a.kind }}</code></td>
+        <td>{{ maker.name if maker else a.requested_by }}<br><span class="muted" style="font-size:12px">{{ maker.role if maker else "" }}</span></td>
+        <td><span class="badge badge-amber">{{ a.required_permission }}</span></td>
+        <td>
+          {% if row.blocked %}
+            <span class="muted">{{ row.blocked }}</span>
+          {% else %}
+            <form method="post" action="/approvals/{{ a.id }}/decide">
+              <input type="text" name="reason" placeholder="Reason (optional)" style="margin-bottom:6px">
+              <button class="btn btn-primary" type="submit" name="decision" value="approve">Approve</button>
+              <button class="btn btn-danger" type="submit" name="decision" value="reject">Reject</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">Nothing waiting for approval.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if recent %}
+<h2>Recently decided</h2>
+<div class="card" style="padding:0">
+  <table class="table">
+    <thead><tr><th>#</th><th>Summary</th><th>Status</th><th>Requested by</th><th>Decided by</th><th>Reason</th></tr></thead>
+    <tbody>
+    {% for a in recent %}
+      {% set maker = users.get(a.requested_by) %}
+      {% set checker = users.get(a.decided_by) if a.decided_by else None %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.summary }}</td>
+        <td><span class="badge {{ 'badge-green' if a.status == 'approved' else 'badge-red' }}">{{ a.status }}</span></td>
+        <td>{{ maker.name if maker else a.requested_by }}</td>
+        <td>{{ checker.name if checker else "auto" }}</td>
+        <td class="muted">{{ a.decision_reason or "" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

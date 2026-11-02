@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+<p class="muted">What the Teams/Slack adapter would have posted. In production the same <code>notify.send()</code> call goes to a real webhook.</p>
+<div class="card" style="padding:0">
+  <table class="table">
+    <thead><tr><th style="width:170px">When</th><th style="width:180px">Channel</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for n in rows %}
+      <tr>
+        <td class="muted">{{ n.at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td><span class="badge badge-gray">{{ n.channel }}</span></td>
+        <td style="white-space:pre-wrap">{{ n.text }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="muted">No notifications yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

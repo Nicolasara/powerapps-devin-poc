@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar %}
+{% block title %}Feature flags{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+  <h1>Feature flags</h1>
+  {% if 'flags.write' in perms %}<a class="btn btn-primary" href="/flags/new">New flag</a>{% endif %}
+</div>
+
+{% if notice %}<div class="flash">{{ notice }}</div>{% endif %}
+
+<div class="card">
+  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;">
+    <span class="muted">Environment:</span>
+    <a class="btn {{ 'btn-primary' if not environment else 'btn-secondary' }}" href="/flags">All</a>
+    {% for env in environments %}
+    <a class="btn {{ 'btn-primary' if environment == env else 'btn-secondary' }}" href="/flags?environment={{ env }}">{{ env }}</a>
+    {% endfor %}
+  </div>
+
+  {% if flags %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Environment</th>
+        <th>State</th>
+        <th>Rollout</th>
+        <th>Owner</th>
+        <th>Last updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for flag in flags %}
+      <tr>
+        <td>
+          <a href="/flags/{{ flag.id }}"><code>{{ flag.key }}</code></a>
+          {% if flag.description %}<div class="muted" style="font-size:.85em;">{{ flag.description }}</div>{% endif %}
+        </td>
+        <td>{{ env_badge(flag.environment) }}</td>
+        <td>
+          {{ state_badge(flag) }}
+          {% if pending.get(flag.id) %}<span class="badge badge-amber">Pending approval</span>{% endif %}
+        </td>
+        <td>{{ rollout_bar(flag.rollout_percent) }}</td>
+        <td>{{ flag.owner_team }}</td>
+        <td class="muted" style="font-size:.85em;">
+          {{ flag.updated_at.strftime('%Y-%m-%d %H:%M') if flag.updated_at else '' }}<br>{{ flag.updated_by_email }}
+        </td>
+        <td style="white-space:nowrap;">
+          {% if 'flags.write' in perms %}
+            {% if flag.environment == 'prod' %}
+            <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
+              <button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit"
+                      {% if pending.get(flag.id) %}disabled title="A change is already awaiting approval"{% endif %}>Toggle</button>
+            </form>
+            {% else %}
+            <a class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" href="/flags/{{ flag.id }}/toggle/confirm">Toggle</a>
+            {% endif %}
+          {% endif %}
+          <a class="btn btn-secondary" href="/flags/{{ flag.id }}">Details</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No flags{% if environment %} in {{ environment }}{% endif %} yet.</p>
+  {% endif %}
+</div>
+
+<p class="muted" style="font-size:.85em;">
+  Changes to prod flags require approval from someone with <code>flags.approve</code> other than the requester.
+  SDK snapshot: <a href="/flags/api/snapshot?environment=prod"><code>/flags/api/snapshot?environment=prod</code></a>
+</p>
+{% endblock %}

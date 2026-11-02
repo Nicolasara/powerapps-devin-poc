@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Transaction #{{ tx.id }}{% endblock %}
+{% block content %}
+<p style="margin:0 0 8px"><a href="/refunds">&larr; Refunds</a></p>
+<h1>Transaction #{{ tx.id }} <span class="muted" style="font-weight:400">&middot; {{ money(tx.amount_cents, tx.currency) }} at {{ tx.merchant }}</span></h1>
+
+{% if kyc_hint %}
+<div class="flash" style="background:#fef3c7;border-color:#fde68a;color:#92400e"><strong>{{ kyc_hint }}</strong> &mdash; review the customer's history before refunding.</div>
+{% endif %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<div class="grid">
+  <div class="kpi"><strong>{{ money(tx.amount_cents, tx.currency) }}</strong><span>Charged</span></div>
+  <div class="kpi"><strong>{{ money(tx.refunded_cents, tx.currency) }}</strong><span>Refunded</span></div>
+  <div class="kpi"><strong>{{ money(available, tx.currency) }}</strong><span>Available to refund{% if reserved %} ({{ money(reserved, tx.currency) }} pending){% endif %}</span></div>
+</div>
+
+<div class="card">
+  <h2>Details</h2>
+  <table class="table">
+    <tr><th style="width:200px">Customer</th><td>{{ tx.customer_name }} &lt;{{ tx.customer_email }}&gt;</td></tr>
+    <tr><th>Merchant</th><td>{{ tx.merchant }}</td></tr>
+    <tr><th>Charged at</th><td>{{ tx.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</td></tr>
+    <tr><th>Currency</th><td>{{ tx.currency }}</td></tr>
+    <tr><th>Processor charge</th><td><code>{{ tx.processor_charge_id }}</code></td></tr>
+  </table>
+</div>
+
+{% if "refunds.request" in perms %}
+<div class="card">
+  <h2>Request a refund</h2>
+  {% if available > 0 %}
+  <p class="muted" style="margin-top:0">
+    Under {{ money(approve_threshold) }} executes immediately &middot;
+    {{ money(approve_threshold) }}&ndash;{{ money(large_threshold - 1) }} needs an approver &middot;
+    {{ money(large_threshold) }}+ needs a senior approver. You cannot approve your own request.
+  </p>
+  <form method="post" action="/refunds/requests">
+    <input type="hidden" name="transaction_id" value="{{ tx.id }}">
+    <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <label for="amount">Amount (USD)</label>
+    <input type="text" id="amount" name="amount" inputmode="decimal" required
+           value="{{ form.get('amount') or '%.2f' | format(available / 100) }}" style="max-width:200px">
+    <label for="reason_code">Reason</label>
+    <select id="reason_code" name="reason_code" required style="max-width:240px">
+      {% for code in reason_codes %}
+        <option value="{{ code }}" {% if form.get('reason_code') == code %}selected{% endif %}>{{ code | replace("_", " ") | capitalize }}</option>
+      {% endfor %}
+    </select>
+    <label for="note">Note</label>
+    <textarea id="note" name="note" placeholder="Context for the approver (optional)">{{ form.get('note', '') }}</textarea>
+    <div style="margin-top:12px"><button class="btn btn-primary" type="submit">Submit refund</button></div>
+  </form>
+  {% else %}
+  <p class="muted" style="margin:0">Nothing left to refund on this transaction.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Refund history</h2>
+  {% if refunds %}
+  <table class="table">
+    <thead><tr><th>#</th><th>Requested</th><th>Reason</th><th style="text-align:right">Amount</th><th>Status</th><th>Requested by</th><th>Processor refund</th></tr></thead>
+    <tbody>
+    {% for rr in refunds %}
+      <tr>
+        <td><a href="/refunds/requests/{{ rr.id }}">#{{ rr.id }}</a></td>
+        <td class="muted">{{ rr.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ rr.reason_code | replace("_", " ") }}</td>
+        <td style="text-align:right">{{ money(rr.amount_cents, tx.currency) }}</td>
+        <td><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></td>
+        <td class="muted">{{ rr.requested_by_email }}</td>
+        <td>{% if rr.processor_refund_id %}<code>{{ rr.processor_refund_id }}</code>{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted" style="margin:0">No refunds on this transaction.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ "Not allowed" if status_code == 403 else "Not found" }}{% endblock %}
+{% block content %}
+<h1>{{ "Not allowed" if status_code == 403 else "Not found" }}</h1>
+<div class="card">
+  <p>{{ detail }}</p>
+  {% if status_code == 403 and user %}<p class="muted">You are signed in as {{ user.name }} ({{ user.role }}). <a href="/login">Switch user</a></p>{% endif %}
+  <a class="btn btn-secondary" href="/">Home</a>
+</div>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Refunds{% endblock %}
+{% block content %}
+<h1>Refunds</h1>
+
+<div class="grid">
+  <div class="kpi"><strong>{{ money(refunded_today) }}</strong><span>Refunded today</span></div>
+  <div class="kpi"><strong>{{ pending }}</strong><span>Pending approvals</span></div>
+  <div class="kpi"><strong{% if failed %} style="color:#c62828"{% endif %}>{{ failed }}</strong><span>Failed refunds</span></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+    <h2 style="margin:0">Transactions</h2>
+    <form class="inline" method="get" action="/refunds">
+      <input type="text" name="q" value="{{ q }}" placeholder="Customer name or email" style="min-width:260px">
+      <button class="btn btn-primary" type="submit">Search</button>
+      {% if q %}<a class="btn btn-secondary" href="/refunds">Clear</a>{% endif %}
+    </form>
+  </div>
+  <p class="muted" style="margin:0 0 8px">{{ total }} transaction{{ "" if total == 1 else "s" }}{% if q %} matching &ldquo;{{ q }}&rdquo;{% endif %}</p>
+  {% if txs %}
+  <table class="table">
+    <thead><tr><th>#</th><th>Date</th><th>Customer</th><th>Merchant</th><th style="text-align:right">Amount</th><th style="text-align:right">Refunded</th><th></th></tr></thead>
+    <tbody>
+    {% for tx in txs %}
+      <tr>
+        <td>{{ tx.id }}</td>
+        <td class="muted">{{ tx.created_at.strftime("%Y-%m-%d") }}</td>
+        <td>{{ tx.customer_name }}<br><span class="muted">{{ tx.customer_email }}</span></td>
+        <td>{{ tx.merchant }}</td>
+        <td style="text-align:right">{{ money(tx.amount_cents, tx.currency) }}</td>
+        <td style="text-align:right">
+          {% if tx.refunded_cents == 0 %}<span class="muted">&mdash;</span>
+          {% elif tx.refunded_cents >= tx.amount_cents %}<span class="badge badge-gray">Full</span>
+          {% else %}{{ money(tx.refunded_cents, tx.currency) }}{% endif %}
+        </td>
+        <td><a class="btn btn-secondary" href="/refunds/tx/{{ tx.id }}">Open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if pages > 1 %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+    <span class="muted">Page {{ page }} of {{ pages }}</span>
+    <span>
+      {% if page > 1 %}<a class="btn btn-secondary" href="{{ page_url(page - 1) }}">&larr; Previous</a>{% endif %}
+      {% if page < pages %}<a class="btn btn-secondary" href="{{ page_url(page + 1) }}">Next &rarr;</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted">No transactions found.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent refund requests</h2>
+  {% if recent %}
+  <table class="table">
+    <thead><tr><th>#</th><th>Requested</th><th>Transaction</th><th>Reason</th><th style="text-align:right">Amount</th><th>Status</th><th>By</th></tr></thead>
+    <tbody>
+    {% for rr in recent %}
+      <tr>
+        <td><a href="/refunds/requests/{{ rr.id }}">#{{ rr.id }}</a></td>
+        <td class="muted">{{ rr.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td><a href="/refunds/tx/{{ rr.transaction_id }}">tx #{{ rr.transaction_id }}</a></td>
+        <td>{{ rr.reason_code | replace("_", " ") }}</td>
+        <td style="text-align:right">{{ money(rr.amount_cents) }}</td>
+        <td><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></td>
+        <td class="muted">{{ rr.requested_by_email }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No refunds requested yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
