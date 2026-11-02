@@ -1,6 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import select, update
 
 from app.apps.feedback.models import FeedbackTicket
 from app.platform.models import AuditEvent
@@ -96,5 +97,43 @@ def test_github_failure_keeps_ticket(login, db, monkeypatch):
     ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
     resp = login("adam").post(f"/feedback/{ticket_id}/file", follow_redirects=False)
     assert "GitHub+refused" in resp.headers["location"]
+    db.expire_all()
+    assert db.get(FeedbackTicket, ticket_id).status == "open"
+
+
+def test_filing_claims_ticket_so_concurrent_click_cannot_double_file(login, db, monkeypatch):
+    from app.platform.github import FakeIssueTracker
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    FakeIssueTracker.issues.clear()
+    location = _create(login("oscar"), "Race me").headers["location"]
+    ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
+    db.execute(update(FeedbackTicket).where(FeedbackTicket.id == ticket_id).values(status="filing"))
+    db.commit()  # another admin's request is mid-flight
+    resp = login("adam").post(f"/feedback/{ticket_id}/file", follow_redirects=False)
+    assert "already+being+filed" in resp.headers["location"] and FakeIssueTracker.issues == []
+
+
+def test_transport_errors_become_tracker_errors(monkeypatch):
+    import httpx
+
+    from app.platform.github import GitHubIssueTracker, IssueTrackerError
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("down")
+    monkeypatch.setattr(httpx, "post", boom)
+    with pytest.raises(IssueTrackerError):
+        GitHubIssueTracker("t").create_issue("a/b", "t", "b", ["devin"])
+
+
+def test_auto_file_outage_keeps_ticket_open(login, db, monkeypatch):
+    monkeypatch.setenv("FEEDBACK_AUTO_FILE", "1")
+
+    class Broken:
+        def create_issue(self, *a, **k):
+            from app.platform.github import IssueTrackerError
+            raise IssueTrackerError("GitHub unreachable")
+    monkeypatch.setattr("app.apps.feedback.routes.get_issue_tracker", lambda: Broken())
+    location = _create(login("oscar"), "During outage").headers["location"]
+    ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
     db.expire_all()
     assert db.get(FeedbackTicket, ticket_id).status == "open"

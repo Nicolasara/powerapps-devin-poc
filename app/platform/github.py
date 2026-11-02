@@ -31,13 +31,16 @@ class GitHubIssueTracker:
         self.api_base = api_base.rstrip("/")
 
     def create_issue(self, repo: str, title: str, body: str, labels: list[str]) -> str:
-        resp = httpx.post(
-            f"{self.api_base}/repos/{repo}/issues",
-            json={"title": title, "body": body, "labels": labels},
-            headers={"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json",
-                     "X-GitHub-Api-Version": "2022-11-28"},
-            timeout=15,
-        )
+        try:
+            resp = httpx.post(
+                f"{self.api_base}/repos/{repo}/issues",
+                json={"title": title, "body": body, "labels": labels},
+                headers={"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json",
+                         "X-GitHub-Api-Version": "2022-11-28"},
+                timeout=15,
+            )
+        except httpx.HTTPError as e:
+            raise IssueTrackerError(f"GitHub unreachable: {e.__class__.__name__}") from e
         if resp.status_code != 201:
             raise IssueTrackerError(f"GitHub returned {resp.status_code}: {resp.text[:200]}")
         return resp.json()["html_url"]
