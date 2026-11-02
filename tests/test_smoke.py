@@ -16,7 +16,7 @@ PAGES = [
     "/feedback", "/feedback?status=open", "/feedback/new?page=/flags", "/feedback/{ticket}",
     "/audit", "/audit?entity_type=flag", "/notifications", "/login",
 ]
-WRITER_PAGES = ["/flags/new", "/flags/{flag}/toggle/confirm"]
+WRITER_PAGES = ["/flags/new"]
 REVIEWER_PAGES = ["/kyc", "/kyc?status=all", "/kyc?status=pending&risk=high", "/kyc?q=reed", "/kyc/{case}"]
 
 

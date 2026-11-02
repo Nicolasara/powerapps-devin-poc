@@ -17,7 +17,7 @@
 <span class="bar"><span class="track"><span class="fill" style="width:{{ pct }}%"></span></span><span>{{ pct }}%</span></span>
 {%- endmacro %}
 
-{# The visual toggle. Non-prod goes through a confirm page first; prod submits an approval request. #}
+{# The visual toggle. Non-prod applies in one click; prod submits an approval request. #}
 {% macro switch(flag, pending=False) -%}
 {% set on = flag.enabled and flag.rollout_percent > 0 %}
 {% if flag.environment == 'prod' %}
@@ -26,7 +26,9 @@
           {% if pending %}disabled title="A change is already awaiting approval"{% else %}title="Request {{ 'disable' if flag.enabled else 'enable' }} (needs approval)"{% endif %}></button>
 </form>
 {% else %}
-<a class="switch {{ 'on' if on }}" role="switch" aria-checked="{{ 'true' if on else 'false' }}" href="/flags/{{ flag.id }}/toggle/confirm" title="{{ 'Disable' if flag.enabled else 'Enable' }}"></a>
+<form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
+  <button class="switch {{ 'on' if on }}" type="submit" role="switch" aria-checked="{{ 'true' if on else 'false' }}" title="{{ 'Disable' if flag.enabled else 'Enable' }}"></button>
+</form>
 {% endif %}
 {%- endmacro %}
 
@@ -58,7 +60,9 @@
       <button class="btn {{ size }} btn-primary" type="submit" {% if plan.pending_next %}disabled title="Awaiting approval"{% else %}title="Request prod {{ plan.next.rollout_percent }}% (needs approval)"{% endif %}>Roll forward {{ icon("arrow-right") }}</button>
     </form>
     {% else %}
-    <a class="btn {{ size }} btn-primary" href="/flags/plan/{{ key }}/forward/confirm?back_to={{ back_to | urlencode }}" title="{{ plan.next.environment }} {{ plan.next.rollout_percent }}%">Roll forward {{ icon("arrow-right") }}</a>
+    <form class="inline" method="post" action="/flags/plan/{{ key }}/forward"><input type="hidden" name="back_to" value="{{ back_to }}">
+      <button class="btn {{ size }} btn-primary" type="submit" title="{{ plan.next.environment }} {{ plan.next.rollout_percent }}% (applies immediately)">Roll forward {{ icon("arrow-right") }}</button>
+    </form>
     {% endif %}
   {% else %}
     <button class="btn {{ size }}" disabled title="Fully rolled out">Complete {{ icon("check") }}</button>

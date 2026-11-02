@@ -20,11 +20,11 @@ def test_default_plan_and_position(login, db):
     assert "dev 100 → staging 100 → prod 10 → prod 50 → prod 100" in detail
 
 
-def test_roll_forward_non_prod_needs_confirm_then_applies(login, db):
+def test_roll_forward_non_prod_applies_in_one_click(login, db):
     oscar = login("oscar")
     _new(oscar, "plan_b")
-    confirm = oscar.get("/flags/plan/plan_b/forward/confirm")
-    assert confirm.status_code == 200 and 'action="/flags/plan/plan_b/forward"' in confirm.text
+    assert oscar.get("/flags/plan/plan_b/forward/confirm").status_code == 404  # no "are you sure?" detour
+    assert 'action="/flags/plan/plan_b/forward"' in oscar.get("/flags").text
     resp = oscar.post("/flags/plan/plan_b/forward", follow_redirects=False)
     assert resp.status_code == 303 and "rolled+forward+to+staging+100" in resp.headers["location"]
     db.expire_all()
@@ -105,4 +105,3 @@ def test_viewer_cannot_roll(login, db):
     oscar = login("oscar")
     _new(oscar, "plan_g")
     assert login("alice").post("/flags/plan/plan_g/forward", follow_redirects=False).status_code == 403
-    assert login("alice").get("/flags/plan/plan_g/forward/confirm").status_code == 403

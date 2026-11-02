@@ -120,16 +120,6 @@ def promote_flag(key: Annotated[str, Form()], to_env: Annotated[str, Form()], us
                      f"{target.rollout_percent}%.")
 
 
-@router.get("/plan/{key}/forward/confirm")
-def confirm_roll_forward(request: Request, key: str, user: Writer, db: DB):
-    """Non-prod roll forward asks "are you sure?" first (prod goes to approval anyway, so it skips this)."""
-    state = _plan_or_404(db, key)
-    if state["next"] is None or state["next"]["environment"] == "prod":
-        return _redirect("/flags", "Nothing to confirm for this step.")
-    first = db.scalar(select(Flag).where(Flag.key == key).order_by(Flag.id))
-    return render(request, "flags/confirm_forward.html", user, key=key, plan=state, first=first)
-
-
 @router.post("/plan/{key}/forward")
 def roll_forward(key: str, user: Writer, db: DB, back_to: Annotated[str, Form()] = "/flags"):
     try:
@@ -188,12 +178,6 @@ def flag_detail(request: Request, flag_id: int, user: Reader, db: DB, notice: st
     plan = service.plan_state(db, flag.key, stages)
     return render(request, "flags/detail.html", user, flag=flag, stages=stages, environments=ENVIRONMENTS,
                   history=history, env_of=env_of, pending=pending, pending_new=pending_new, notice=notice, plan=plan)
-
-
-@router.get("/{flag_id}/toggle/confirm")
-def confirm_toggle(request: Request, flag_id: int, user: Writer, db: DB):
-    flag = _get_flag(db, flag_id)
-    return render(request, "flags/confirm_toggle.html", user, flag=flag)
 
 
 @router.post("/{flag_id}/toggle")
