@@ -40,7 +40,7 @@
   <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
     <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
       <button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit" {% if pending %}disabled{% endif %}>
-        Request {{ 'disable' if flag.enabled else 'enable' }}
+        {% if flag.environment == 'prod' %}Request {{ 'disable' if flag.enabled else 'enable' }}{% else %}{{ 'Disable' if flag.enabled else 'Enable' }}{% endif %}
       </button>
     </form>
 
