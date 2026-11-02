@@ -24,6 +24,7 @@
     <nav class="nav">
       <a href="/" class="{% if path == '/' %}active{% endif %}">{{ icon("home") }} Overview</a>
       <a href="/flags" class="{% if path.startswith('/flags') %}active{% endif %}">{{ icon("flag") }} Feature flags</a>
+      <a href="/kyc" class="{% if path.startswith('/kyc') %}active{% endif %}">{{ icon("shield") }} KYC review</a>
       <a href="/refunds" class="{% if path.startswith('/refunds') %}active{% endif %}">{{ icon("refund") }} Refunds</a>
       <a href="/approvals" class="{% if path.startswith('/approvals') %}active{% endif %}">{{ icon("check-circle") }} Approvals {% if pc %}<span class="count">{{ pc }}</span>{% endif %}</a>
     </nav>

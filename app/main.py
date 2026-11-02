@@ -10,11 +10,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.apps import feedback, flags, refunds
+from app.apps import feedback, flags, kyc, refunds
 from app.apps.feedback import models as feedback_models
 from app.apps.feedback.routes import router as feedback_router
 from app.apps.flags import models as flags_models
 from app.apps.flags.routes import router as flags_router
+from app.apps.kyc import models as kyc_models
+from app.apps.kyc.routes import router as kyc_router
 from app.apps.refunds import models as refunds_models
 from app.apps.refunds import service as refunds_service
 from app.apps.refunds.routes import router as refunds_router
@@ -32,7 +34,7 @@ from app.platform.models import Approval, AuditEvent, Notification, User, utcnow
 from app.web import render, templates
 
 # Every app's models must be imported so Base.metadata knows all tables before create_all().
-MODEL_MODULES = (flags_models, refunds_models, feedback_models)
+MODEL_MODULES = (flags_models, refunds_models, feedback_models, kyc_models)
 _registered = False
 
 
@@ -43,6 +45,7 @@ def register_apps() -> None:
         return
     flags.register()
     refunds.register()
+    kyc.register()
     feedback.register()
     _registered = True
 
@@ -62,6 +65,7 @@ app = FastAPI(title="Internal Tools (Power Apps replacement POC)", lifespan=life
 register_apps()  # also at import so TestClient without the lifespan context still works
 app.include_router(flags_router)
 app.include_router(refunds_router)
+app.include_router(kyc_router)
 app.include_router(feedback_router)
 
 
@@ -133,6 +137,7 @@ def logout():
 def home(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Dashboard: shell-level summary of every app (the shell may read app tables; apps may not read each other's)."""
     Flag, RefundRequest, FeedbackTicket = flags_models.Flag, refunds_models.RefundRequest, feedback_models.FeedbackTicket
+    KycCase = kyc_models.KycCase
 
     def count(stmt) -> int:
         return db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
@@ -151,6 +156,8 @@ def home(request: Request, user: User = Depends(current_user), db: Session = Dep
         refunded_today=refunds_service.fmt_money(refunded_today),
         refund_pending=count(select(RefundRequest).where(RefundRequest.status == "pending_approval")),
         open_feedback=count(select(FeedbackTicket).where(FeedbackTicket.status == "open")),
+        kyc_pending=count(select(KycCase).where(KycCase.status == "pending")),
+        kyc_high=count(select(KycCase).where(KycCase.status == "pending", KycCase.risk_band == "high")),
     )
 
 
