@@ -31,11 +31,11 @@ def _query(resp) -> dict[str, list[str]]:
     return parse_qs(urlparse(resp.headers["location"]).query)
 
 
-def test_dev_toggle_applies_immediately_via_confirm_page(login, db, flags):
+def test_dev_toggle_applies_in_one_click(login, db, flags):
     oscar = login("oscar")
-    confirm = oscar.get(f"/flags/{flags['dev']}/toggle/confirm")
-    assert confirm.status_code == 200
-    assert f'action="/flags/{flags["dev"]}/toggle"' in confirm.text
+    listing = oscar.get("/flags")
+    assert f'<form class="inline" method="post" action="/flags/{flags["dev"]}/toggle">' in listing.text
+    assert oscar.get(f"/flags/{flags['dev']}/toggle/confirm").status_code == 404
 
     resp = oscar.post(f"/flags/{flags['dev']}/toggle", follow_redirects=False)
     assert resp.status_code == 303

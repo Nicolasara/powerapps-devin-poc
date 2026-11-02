@@ -103,12 +103,6 @@ def flag_detail(request: Request, flag_id: int, user: Reader, db: DB, notice: st
     return render(request, "flags/detail.html", user, flag=flag, history=history, pending=pending, notice=notice)
 
 
-@router.get("/{flag_id}/toggle/confirm")
-def confirm_toggle(request: Request, flag_id: int, user: Writer, db: DB):
-    flag = _get_flag(db, flag_id)
-    return render(request, "flags/confirm_toggle.html", user, flag=flag)
-
-
 @router.post("/{flag_id}/toggle")
 def toggle_flag(flag_id: int, user: Writer, db: DB):
     flag = _get_flag(db, flag_id)

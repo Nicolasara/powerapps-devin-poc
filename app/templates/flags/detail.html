@@ -38,17 +38,11 @@
 
   {% if 'flags.write' in perms %}
   <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-    {% if flag.environment == 'prod' %}
     <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
       <button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit" {% if pending %}disabled{% endif %}>
         Request {{ 'disable' if flag.enabled else 'enable' }}
       </button>
     </form>
-    {% else %}
-    <a class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" href="/flags/{{ flag.id }}/toggle/confirm">
-      {{ 'Disable' if flag.enabled else 'Enable' }}
-    </a>
-    {% endif %}
 
     <form class="inline" method="post" action="/flags/{{ flag.id }}/rollout">
       <label for="rollout_percent">Rollout %</label>

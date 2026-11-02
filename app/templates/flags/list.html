@@ -50,14 +50,10 @@
         </td>
         <td style="white-space:nowrap;">
           {% if 'flags.write' in perms %}
-            {% if flag.environment == 'prod' %}
             <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
               <button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit"
                       {% if pending.get(flag.id) %}disabled title="A change is already awaiting approval"{% endif %}>Toggle</button>
             </form>
-            {% else %}
-            <a class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" href="/flags/{{ flag.id }}/toggle/confirm">Toggle</a>
-            {% endif %}
           {% endif %}
           <a class="btn btn-secondary" href="/flags/{{ flag.id }}">Details</a>
         </td>

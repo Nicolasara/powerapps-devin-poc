@@ -14,7 +14,7 @@ PAGES = [
     "/approvals", "/feedback", "/feedback?status=open", "/feedback/new?page=/flags", "/feedback/{ticket}",
     "/audit", "/audit?entity_type=flag", "/notifications", "/login",
 ]
-WRITER_PAGES = ["/flags/new", "/flags/{flag}/toggle/confirm"]
+WRITER_PAGES = ["/flags/new"]
 
 
 @pytest.fixture
