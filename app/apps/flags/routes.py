@@ -63,8 +63,11 @@ def list_flags(request: Request, user: Reader, db: DB, environment: str | None =
         q = q.where(Flag.environment == env)
     flags = db.scalars(q).all()
     pending = service.pending_by_flag(db, [f.id for f in flags])
-    return render(request, "flags/list.html", user, flags=flags, environment=env, environments=ENVIRONMENTS,
-                  pending=pending, notice=notice)
+    rows = service.by_key(db)
+    if env:
+        rows = [r for r in rows if r["envs"].get(env)]
+    return render(request, "flags/list.html", user, flags=flags, rows=rows, environment=env,
+                  environments=ENVIRONMENTS, pending=pending, notice=notice)
 
 
 @router.get("/new")
@@ -74,22 +77,34 @@ def new_flag(request: Request, user: Writer):
 
 @router.post("")
 def create_flag(request: Request, user: Writer, db: DB, key: Annotated[str, Form()],
-                environment: Annotated[str, Form()], description: Annotated[str, Form()] = "",
+                description: Annotated[str, Form()] = "",
                 owner_team: Annotated[str, Form()] = "", enabled: Annotated[bool, Form()] = False,
                 rollout_percent: Annotated[str, Form()] = "0"):
     try:
-        flag = service.create_flag(db, user, key, description, owner_team, environment, enabled, rollout_percent)
+        flag = service.create_key(db, user, key, description, owner_team, enabled, rollout_percent)
     except service.FlagError as e:
         db.rollback()
-        form = {"key": key, "description": description, "owner_team": owner_team, "environment": environment,
+        form = {"key": key, "description": description, "owner_team": owner_team,
                 "enabled": enabled, "rollout_percent": rollout_percent}
         resp = render(request, "flags/new.html", user, environments=ENVIRONMENTS, form=form, error=str(e))
         resp.status_code = 400
         return resp
     _commit(db)
-    notice = "Flag created. Prod flags start disabled; enable them via approval." if flag.environment == "prod" \
-        else "Flag created."
-    return _redirect(f"/flags/{flag.id}", notice)
+    return _redirect(f"/flags/{flag.id}", f"Flag created in {flag.environment}; promote it forward when ready.")
+
+
+@router.post("/promote")
+def promote_flag(key: Annotated[str, Form()], to_env: Annotated[str, Form()], user: Writer, db: DB):
+    try:
+        target, approval = service.promote(db, user, key, to_env)
+    except service.FlagError as e:
+        db.rollback()
+        return _redirect("/flags", str(e))
+    _commit(db)
+    if approval is not None and approval.status == "pending":
+        return _redirect("/flags", f"Sent for approval: promote {key} to prod.")
+    return _redirect("/flags", f"{key} promoted to {target.environment}: {'ON' if target.enabled else 'OFF'} at "
+                     f"{target.rollout_percent}%.")
 
 
 @router.get("/{flag_id}")
@@ -100,7 +115,9 @@ def flag_detail(request: Request, flag_id: int, user: Reader, db: DB, notice: st
         .order_by(AuditEvent.at.desc(), AuditEvent.id.desc())
     ).all()
     pending = service.pending_by_flag(db, [flag.id]).get(flag.id, [])
-    return render(request, "flags/detail.html", user, flag=flag, history=history, pending=pending, notice=notice)
+    siblings = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == flag.key))}
+    return render(request, "flags/detail.html", user, flag=flag, history=history, pending=pending, notice=notice,
+                  siblings=siblings, environments=ENVIRONMENTS)
 
 
 @router.get("/{flag_id}/toggle/confirm")
