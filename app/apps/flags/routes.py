@@ -10,6 +10,7 @@ from app.platform import events
 from app.platform.auth import require
 from app.platform.db import get_db
 from app.platform.models import AuditEvent, User
+from app.platform.tables import sort_url_factory
 from app.web import render
 
 from . import service
@@ -56,7 +57,7 @@ def snapshot(request: Request, db: DB, environment: Annotated[str, Query()] = "p
 
 @router.get("")
 def list_flags(request: Request, user: Reader, db: DB, environment: str | None = None,
-               notice: str | None = None):
+               notice: str | None = None, sort: str = "", dir: str = ""):
     env = environment if environment in ENVIRONMENTS else None
     q = select(Flag).order_by(Flag.key, Flag.environment)
     if env:
@@ -65,11 +66,18 @@ def list_flags(request: Request, user: Reader, db: DB, environment: str | None =
     rows = service.by_key(db)
     if env:
         rows = [r for r in rows if r["envs"].get(env)]
+    sort = sort if sort in ("flag", "owner", "stage") else "flag"
+    dir = dir if dir in ("asc", "desc") else "asc"
+    keys = {"flag": lambda r: r["key"], "owner": lambda r: (r["owner_team"] or "", r["key"]),
+            "stage": lambda r: (sum(1 for f in r["envs"].values() if f), r["key"])}
+    rows.sort(key=keys[sort], reverse=(dir == "desc"))
+    sort_url = sort_url_factory("/flags", {"environment": env}, sort, dir)
     # Every environment is shown on each row, so pending must cover all of them, not just the filtered env.
     pending = service.pending_by_flag(db, [f.id for r in rows for f in r["envs"].values() if f])
     pending_new = service.pending_new(db)
     return render(request, "flags/list.html", user, flags=flags, rows=rows, environment=env,
-                  environments=ENVIRONMENTS, pending=pending, pending_new=pending_new, notice=notice)
+                  environments=ENVIRONMENTS, pending=pending, pending_new=pending_new, notice=notice,
+                  sort=sort, dir=dir, sort_url=sort_url)
 
 
 @router.get("/new")

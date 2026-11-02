@@ -5,7 +5,6 @@ import os
 from collections import Counter
 
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.platform import events
@@ -121,6 +120,15 @@ def rescore(db: Session, case: KycCase) -> None:
 
 # ---------------------------------------------------------------- intake and decisions
 
+def _insert_ignore_conflict(db: Session):
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    return insert(KycCase).on_conflict_do_nothing(index_elements=["vendor_ref"])
+
+
 def intake(db: Session, payload: dict) -> tuple[KycCase, bool]:
     """Create a case from a vendor webhook. Returns (case, created). Retries with the same vendor_ref are no-ops."""
     try:
@@ -135,20 +143,19 @@ def intake(db: Session, payload: dict) -> tuple[KycCase, bool]:
     if decision not in ("pass", "review", "fail"):
         raise KycError("decision must be pass, review or fail")
     device = payload.get("device") or {}
-    case = KycCase(
-        vendor=str(payload.get("vendor", "alloy")), vendor_ref=ref,
-        applicant_name=str(applicant.get("name", "")).strip(), applicant_email=str(applicant.get("email", "")).lower(),
-        address=" ".join(str(applicant.get("address", "")).split()).lower(),
-        device_fingerprint=str(device.get("fingerprint", "")), ip_address=str(device.get("ip", "")),
-        vendor_decision=decision, vendor_checks=dict(payload.get("checks") or {}),
-    )
-    try:
-        with db.begin_nested():
-            db.add(case)
-            db.flush()
-    except IntegrityError:
-        # Concurrent retry of the same delivery won the race; honour the idempotent contract.
-        return db.scalar(select(KycCase).where(KycCase.vendor_ref == ref)), False
+    values = {
+        "vendor": str(payload.get("vendor", "alloy")), "vendor_ref": ref,
+        "applicant_name": str(applicant.get("name", "")).strip(), "applicant_email": str(applicant.get("email", "")).lower(),
+        "address": " ".join(str(applicant.get("address", "")).split()).lower(),
+        "device_fingerprint": str(device.get("fingerprint", "")), "ip_address": str(device.get("ip", "")),
+        "vendor_decision": decision, "vendor_checks": dict(payload.get("checks") or {}),
+    }
+    # One idempotent INSERT in the outer transaction (no savepoint: pysqlite would commit it on its own), so a
+    # concurrent retry sees "already there" and a failure later in this unit of work rolls the row back too.
+    inserted = db.execute(_insert_ignore_conflict(db).values(**values)).rowcount == 1
+    case = db.scalar(select(KycCase).where(KycCase.vendor_ref == ref))
+    if not inserted:
+        return case, False
     rescore(db, case)
     audit(db, None, "kyc.case_created", "kyc_case", case.id,
           after={**case.summary(), "vendor_decision": decision, "vendor_ref": ref}, reason=f"webhook from {case.vendor}")

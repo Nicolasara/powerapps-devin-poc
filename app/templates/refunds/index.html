@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon, empty, stat %}
+{% from "_icons.html" import th_sort, icon, empty, stat %}
 {% block title %}Refunds{% endblock %}
 {% block crumbs %}<span class="sep">/</span><span class="cur">Refunds</span>{% endblock %}
 {% block content %}
-<div class="ph"><div><h1>Refunds</h1><p>Find a charge, request a refund. Small amounts execute immediately; larger ones route to an approver or admin.</p></div></div>
+<div class="ph"><div><h1>Refunds</h1><p>Transactions are the charges you can refund. Approval depends on the <em>refund</em> amount, not the charge: under {{ money(approve_threshold) }} executes immediately, up to {{ money(large_threshold) }} needs an approver, above that an admin.</p></div></div>
 
 <div class="grid g3 mb">
   {{ stat("Refunded today", money(refunded_today), "dollar", "tint-green") }}
@@ -13,17 +13,44 @@
 
 <div class="card flush">
   <div class="toolbar">
-    <div><h2>Transactions</h2><div class="small muted">{{ total }} transaction{{ "" if total == 1 else "s" }}{% if q %} matching &ldquo;{{ q }}&rdquo;{% endif %}</div></div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="seg">
+        <a href="/refunds{% if q %}?q={{ q }}{% endif %}" class="{{ 'on' if view == 'transactions' }}">Transactions</a>
+        <a href="/refunds?view=requests{% if q %}&q={{ q }}{% endif %}" class="{{ 'on' if view == 'requests' }}">Refund requests</a>
+      </div>
+      <div class="small muted">{{ total }} {{ 'refund request' if view == 'requests' else 'transaction' }}{{ "" if total == 1 else "s" }}{% if q %} matching &ldquo;{{ q }}&rdquo;{% endif %}</div>
+    </div>
     <form class="inline" method="get" action="/refunds">
+      {% if view == 'requests' %}<input type="hidden" name="view" value="requests">{% endif %}
       <div class="input-icon">{{ icon("search") }}<input type="search" name="q" value="{{ q }}" placeholder="Search customer name or email" style="width:300px"></div>
       <button class="btn" type="submit">Search</button>
-      {% if q %}<a class="btn btn-ghost" href="/refunds">Clear</a>{% endif %}
+      {% if q %}<a class="btn btn-ghost" href="/refunds{% if view == 'requests' %}?view=requests{% endif %}">Clear</a>{% endif %}
     </form>
   </div>
   <div class="card-b">
-  {% if txs %}
+  {% if view == 'requests' %}
+  {% if requests %}
   <table class="table">
-    <thead><tr><th>#</th><th>Date</th><th>Customer</th><th>Merchant</th><th class="right">Amount</th><th class="right">Refunded</th><th></th></tr></thead>
+    <thead><tr><th>#</th>{{ th_sort("Requested", "requested", sort, dir, sort_url) }}<th>Transaction</th>{{ th_sort("Reason", "reason", sort, dir, sort_url) }}{{ th_sort("Amount", "amount", sort, dir, sort_url, "right") }}<th>Route</th>{{ th_sort("Status", "status", sort, dir, sort_url) }}{{ th_sort("By", "by", sort, dir, sort_url) }}</tr></thead>
+    <tbody>
+    {% for rr in requests %}
+      <tr>
+        <td><a href="/refunds/requests/{{ rr.id }}">#{{ rr.id }}</a></td>
+        <td class="muted small nowrap">{{ rr.created_at.strftime("%b %d, %H:%M") }}</td>
+        <td><a href="/refunds/tx/{{ rr.transaction_id }}">tx #{{ rr.transaction_id }}</a></td>
+        <td>{{ rr.reason_code | replace("_", " ") | capitalize }}</td>
+        <td class="right mono">{{ money(rr.amount_cents) }}</td>
+        <td class="small">{% if rr.amount_cents < approve_threshold %}<span class="badge badge-green">Auto</span>{% elif rr.amount_cents < large_threshold %}<span class="badge badge-amber">Approver</span>{% else %}<span class="badge badge-red">Admin</span>{% endif %}</td>
+        <td><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></td>
+        <td class="muted small">{{ rr.requested_by_email.split("@")[0] }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("No refund requests", "Open a transaction to request one.", "refund") }}{% endif %}
+  {% elif txs %}
+  <table class="table">
+    <thead><tr><th>#</th>{{ th_sort("Date", "date", sort, dir, sort_url) }}{{ th_sort("Customer", "customer", sort, dir, sort_url) }}{{ th_sort("Merchant", "merchant", sort, dir, sort_url) }}{{ th_sort("Amount", "amount", sort, dir, sort_url, "right") }}<th class="right">Refunded</th><th></th></tr></thead>
     <tbody>
     {% for tx in txs %}
       <tr>
@@ -42,6 +69,7 @@
     {% endfor %}
     </tbody>
   </table>
+  {% else %}{{ empty("No transactions found", "Try a different name or email.", "search") }}{% endif %}
   {% if pages > 1 %}
   <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:none">
     <span class="small muted">Page {{ page }} of {{ pages }}</span>
@@ -51,31 +79,7 @@
     </span>
   </div>
   {% endif %}
-  {% else %}{{ empty("No transactions found", "Try a different name or email.", "search") }}{% endif %}
   </div>
 </div>
 
-<div class="card flush">
-  <div class="card-h"><div><h2>Recent refund requests</h2></div></div>
-  <div class="card-b">
-  {% if recent %}
-  <table class="table">
-    <thead><tr><th>#</th><th>Requested</th><th>Transaction</th><th>Reason</th><th class="right">Amount</th><th>Status</th><th>By</th></tr></thead>
-    <tbody>
-    {% for rr in recent %}
-      <tr>
-        <td><a href="/refunds/requests/{{ rr.id }}">#{{ rr.id }}</a></td>
-        <td class="muted small nowrap">{{ rr.created_at.strftime("%b %d, %H:%M") }}</td>
-        <td><a href="/refunds/tx/{{ rr.transaction_id }}">tx #{{ rr.transaction_id }}</a></td>
-        <td>{{ rr.reason_code | replace("_", " ") | capitalize }}</td>
-        <td class="right mono">{{ money(rr.amount_cents) }}</td>
-        <td><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></td>
-        <td class="muted small">{{ rr.requested_by_email.split("@")[0] }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}{{ empty("No refunds yet", "Open a transaction to request one.", "refund") }}{% endif %}
-  </div>
-</div>
 {% endblock %}

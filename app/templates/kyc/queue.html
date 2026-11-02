@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon, empty, stat %}
+{% from "_icons.html" import th_sort, icon, empty, stat %}
 {% block title %}KYC review{% endblock %}
 {% block crumbs %}<span class="sep">/</span><span class="cur">KYC review</span>{% endblock %}
 {% block content %}
@@ -39,7 +39,7 @@
   <div class="card-b">
   {% if cases %}
   <table class="table">
-    <thead><tr><th>Applicant</th><th>Vendor</th><th>Risk</th><th>Why</th><th>Device</th><th>{{ 'Received' if status == 'pending' else 'Decided' }}</th><th></th></tr></thead>
+    <thead><tr>{{ th_sort("Applicant", "applicant", sort, dir, sort_url) }}{{ th_sort("Vendor", "vendor", sort, dir, sort_url) }}{{ th_sort("Risk", "risk", sort, dir, sort_url) }}<th>Why</th>{{ th_sort("Device", "device", sort, dir, sort_url) }}{% if status == 'pending' %}{{ th_sort("Received", "received", sort, dir, sort_url) }}{% else %}{{ th_sort("Decided", "decided", sort, dir, sort_url) }}{% endif %}<th></th></tr></thead>
     <tbody>
     {% for c in cases %}
       <tr>

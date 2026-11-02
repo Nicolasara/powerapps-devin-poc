@@ -13,6 +13,7 @@ from app.platform.audit import audit
 from app.platform.auth import require
 from app.platform.db import get_db
 from app.platform.models import AuditEvent, User
+from app.platform.tables import page_url_factory, resolve_sort, sort_url_factory
 from app.web import render
 
 from . import service
@@ -50,7 +51,8 @@ MAX_WEBHOOK_BYTES = 64 * 1024
 
 
 @router.get("")
-def queue(request: Request, db: Db, user: Reader, status: str = "pending", risk: str = "", q: str = "", page: int = 1):
+def queue(request: Request, db: Db, user: Reader, status: str = "pending", risk: str = "", q: str = "", page: int = 1,
+          sort: str = "", dir: str = ""):
     status = status if status in STATUSES or status == "all" else "pending"
     stmt = select(KycCase)
     if status != "all":
@@ -64,17 +66,19 @@ def queue(request: Request, db: Db, user: Reader, status: str = "pending", risk:
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(max(1, page), pages)
-    order = (KycCase.risk_score.desc(), KycCase.created_at.asc(), KycCase.id.asc()) if status == "pending" \
-        else (KycCase.decided_at.desc(), KycCase.id.desc())
-    cases = db.scalars(stmt.order_by(*order).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
-
-    def page_url(n: int) -> str:
-        return "/kyc?" + urlencode({k: v for k, v in {"status": status, "risk": risk, "q": q, "page": n}.items() if v})
+    allowed = {"applicant": (KycCase.applicant_name,), "vendor": (KycCase.vendor_decision,),
+               "risk": (KycCase.risk_score,), "device": (KycCase.device_fingerprint,),
+               "received": (KycCase.created_at,), "decided": (KycCase.decided_at,)}
+    sort, dir, order = resolve_sort(sort, dir, allowed, "risk" if status == "pending" else "decided", "desc")
+    cases = db.scalars(stmt.order_by(*order, KycCase.id.asc()).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
+    params = {"status": status, "risk": risk, "q": q, "sort": sort, "dir": dir}
+    page_url = page_url_factory("/kyc", params)
+    sort_url = sort_url_factory("/kyc", {**params, "page": None}, sort, dir)
 
     counts = {s: db.scalar(select(func.count()).select_from(KycCase).where(KycCase.status == s)) or 0 for s in STATUSES}
     return render(request, "kyc/queue.html", user, **_ctx(cases=cases, status=status, risk=risk, q=q, counts=counts,
                                                           stats=service.stats(db), page=page, pages=pages, total=total,
-                                                          page_url=page_url))
+                                                          page_url=page_url, sort=sort, dir=dir, sort_url=sort_url))
 
 
 @router.get("/{case_id}")
