@@ -94,6 +94,7 @@ def index(request: Request, db: Db, user: Reader, q: str = "", page: int = 1, vi
         txs=rows if view == "transactions" else [], requests=rows if view == "requests" else [],
         page=page, pages=pages, page_url=page_url_factory("/refunds", params),
         sort=sort, dir=dir, sort_url=sort_url_factory("/refunds", params, sort, dir),
+        view_url=lambda v: "/refunds?" + urlencode({k: x for k, x in {"view": v if v != "transactions" else None, "q": q}.items() if x}),
         approve_threshold=service.APPROVE_THRESHOLD_CENTS, large_threshold=service.LARGE_THRESHOLD_CENTS,
     ))
 
