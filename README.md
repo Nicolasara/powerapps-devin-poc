@@ -40,8 +40,13 @@ tables. They communicate through events.
 - **Feedback queue** (`/feedback`): every page has a floating **Feedback** button for reporting friction. Tickets
   land on a board (open / filed / shipped). Admins (the platform team) triage a ticket into a pre-filled GitHub
   issue; operators never need to open GitHub.
-- **KYC review** is **design-only**. There is no KYC app in this repository. The refunds app consumes its
-  `kyc.decision.v1` event contract, and the demo seed publishes sample events.
+- **KYC review** (`/kyc`): cases arrive from the KYC vendor's **signed webhook** (`POST /kyc/webhook/vendor`,
+  HMAC-SHA256 in `X-Vendor-Signature`, idempotent on the vendor's id). Deterministic, explainable risk rules run on
+  intake: shared device fingerprint / address / IP with a rejected applicant, repeated device fingerprints, vendor check
+  results, disposable email domains. Clean passes auto-approve; everything else waits for an analyst with `kyc.review`.
+  Rejecting a case re-scores every pending case linked to it. Decisions emit `kyc.decision.v1`, which the refunds app
+  consumes for its risk hint; refunds never reads KYC tables. The queue has a "Simulate vendor webhook" button that signs a
+  payload and runs it through the real intake path (scenarios: clean, same device as a rejected applicant, vendor review).
 
 The shell (`app/main.py`) provides login, a home page, a cross-app approvals inbox (`/approvals`), the audit log
 (`/audit`) and the notification log (`/notifications`).

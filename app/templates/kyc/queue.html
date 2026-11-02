@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, empty, stat %}
+{% block title %}KYC review{% endblock %}
+{% block crumbs %}<span class="sep">/</span><span class="cur">KYC review</span>{% endblock %}
+{% block content %}
+<div class="ph">
+  <div><h1>KYC review</h1><p>Cases arrive from the KYC vendor's signed webhook. Clean passes auto-approve; anything the vendor or our own rules flag waits here for an analyst.</p></div>
+  {% if 'kyc.review' in perms %}
+  <div class="actions">
+    <form class="inline" method="post" action="/kyc/simulate">
+      <select name="scenario" style="height:34px"><option value="clean">Clean applicant</option><option value="ring">Same device as rejected applicant</option><option value="vendor_review">Vendor asks for review</option></select>
+      <button class="btn" type="submit">{{ icon("zap") }} Simulate vendor webhook</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid g4 mb">
+  {{ stat("Awaiting review", stats.pending, "inbox", "tint-amber" if stats.pending else "tint-green") }}
+  {{ stat("High risk pending", stats.high_pending, "alert", "tint-red" if stats.high_pending else "tint-slate") }}
+  {{ stat("Approved today", stats.approved_today, "check-circle", "tint-green") }}
+  {{ stat("Rejected", stats.rejected, "x-circle", "tint-slate") }}
+</div>
+
+<div class="card flush">
+  <div class="toolbar">
+    <div class="seg">
+      <a href="/kyc?status=pending" class="{{ 'on' if status == 'pending' }}">Pending <span class="n">{{ counts.pending }}</span></a>
+      <a href="/kyc?status=approved" class="{{ 'on' if status == 'approved' }}">Approved <span class="n">{{ counts.approved }}</span></a>
+      <a href="/kyc?status=rejected" class="{{ 'on' if status == 'rejected' }}">Rejected <span class="n">{{ counts.rejected }}</span></a>
+      <a href="/kyc?status=all" class="{{ 'on' if status == 'all' }}">All</a>
+    </div>
+    <div class="seg">
+      <a href="/kyc?status={{ status }}" class="{{ 'on' if not risk }}">Any risk</a>
+      {% for r in ['high', 'medium', 'low'] %}<a href="/kyc?status={{ status }}&risk={{ r }}" class="{{ 'on' if risk == r }}">{{ r }}</a>{% endfor %}
+    </div>
+  </div>
+  <div class="card-b">
+  {% if cases %}
+  <table class="table">
+    <thead><tr><th>Applicant</th><th>Vendor</th><th>Risk</th><th>Why</th><th>Device</th><th>{{ 'Received' if status == 'pending' else 'Decided' }}</th><th></th></tr></thead>
+    <tbody>
+    {% for c in cases %}
+      <tr>
+        <td><a class="primary-cell" href="/kyc/{{ c.id }}" style="color:var(--text)">{{ c.applicant_name }}</a><div class="sub">{{ c.applicant_email }}</div></td>
+        <td><span class="badge {{ vendor_badges.get(c.vendor_decision, 'badge-gray') }}">{{ c.vendor_decision }}</span></td>
+        <td><span class="badge {{ risk_badges.get(c.risk_band, 'badge-gray') }}">{{ c.risk_band }} · {{ c.risk_score }}</span></td>
+        <td style="max-width:360px">{% for r in c.risk_reasons %}<div class="small">{{ r }}</div>{% else %}<span class="faint small">no flags</span>{% endfor %}</td>
+        <td><span class="mono small muted">{{ c.device_fingerprint or '—' }}</span></td>
+        <td class="small muted nowrap">{{ (c.decided_at if status != 'pending' and c.decided_at else c.created_at).strftime("%b %d, %H:%M") }}</td>
+        <td class="right">{% if c.status == 'pending' %}<a class="btn btn-sm btn-primary" href="/kyc/{{ c.id }}">Review</a>{% else %}<span class="badge {{ status_badges.get(c.status) }}">{{ c.status }}</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Nothing to review", "New cases appear here as the vendor's webhooks arrive.", "shield") }}{% endif %}
+  </div>
+</div>
+<p class="small muted">Rules are deterministic and explainable: shared device / address / IP with a rejected applicant, repeated device fingerprints, vendor check results, disposable email domains. Decisions emit <code>kyc.decision.v1</code>; the refunds app subscribes and shows a risk hint on that customer's transactions.</p>
+{% endblock %}

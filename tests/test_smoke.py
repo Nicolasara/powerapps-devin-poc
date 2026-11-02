@@ -5,12 +5,14 @@ from sqlalchemy import func, select
 from app import seed
 from app.apps.feedback.models import FeedbackTicket
 from app.apps.flags.models import Flag
+from app.apps.kyc.models import KycCase
 from app.apps.refunds.models import RefundRequest, Transaction
 from app.platform.models import Approval
 
 PAGES = [
     "/", "/flags", "/flags?environment=prod", "/flags/{flag}", "/flags/api/snapshot?environment=dev",
     "/refunds", "/refunds?q=chen", "/refunds?page=2", "/refunds/tx/{tx}", "/refunds/requests/{rr}",
+    "/kyc", "/kyc?status=all", "/kyc?status=pending&risk=high", "/kyc/{case}",
     "/approvals", "/audit?page=2", "/audit?entity_type=flag&page=1",
     "/feedback", "/feedback?status=open", "/feedback/new?page=/flags", "/feedback/{ticket}",
     "/audit", "/audit?entity_type=flag", "/notifications", "/login",
@@ -26,6 +28,7 @@ def demo(db) -> dict[str, int]:
         "tx": db.scalar(select(func.min(Transaction.id))),
         "rr": db.scalar(select(func.min(RefundRequest.id))),
         "ticket": db.scalar(select(func.min(FeedbackTicket.id))),
+        "case": db.scalar(select(func.min(KycCase.id))),
     }
 
 

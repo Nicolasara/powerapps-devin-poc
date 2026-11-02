@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, empty %}
+{% block title %}KYC case #{{ case.id }}{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/kyc">KYC review</a><span class="sep">/</span><span class="cur">Case #{{ case.id }}</span>{% endblock %}
+{% block content %}
+<div class="ph">
+  <div><div class="title-row"><h1>{{ case.applicant_name }}</h1><span class="badge {{ status_badges.get(case.status) }}">{{ case.status }}</span><span class="badge {{ risk_badges.get(case.risk_band) }}">{{ case.risk_band }} risk · {{ case.risk_score }}</span></div>
+  <p>Case #{{ case.id }} · {{ case.applicant_email }} · received {{ case.created_at.strftime("%b %d, %Y %H:%M") }} UTC from {{ case.vendor }} (<span class="mono">{{ case.vendor_ref }}</span>)</p></div>
+  <div class="actions"><a class="btn btn-ghost" href="/kyc">{{ icon("arrow-left") }} Queue</a></div>
+</div>
+{% if error %}<div class="alert alert-error">{{ icon("x-circle") }}<span>{{ error }}</span></div>{% endif %}
+
+<div class="split">
+  <div>
+    {% if case.risk_reasons %}
+    <div class="alert {{ 'alert-error' if case.risk_band == 'high' else 'alert-warn' }}">{{ icon("alert") }}<div><strong>Why this needs a look</strong><ul style="margin:4px 0 0;padding-left:18px">{% for r in case.risk_reasons %}<li>{{ r }}</li>{% endfor %}</ul></div></div>
+    {% endif %}
+
+    <div class="grid g2 mb">
+      <div class="card" style="margin:0">
+        <div class="card-h"><div><h2>Applicant</h2></div></div>
+        <div class="card-b" style="padding:6px 18px">
+          <table class="kv">
+            <tr><th>Name</th><td>{{ case.applicant_name }}</td></tr>
+            <tr><th>Email</th><td>{{ case.applicant_email }}</td></tr>
+            <tr><th>Address</th><td>{{ case.address or '—' }}</td></tr>
+            <tr><th>Device</th><td><span class="mono">{{ case.device_fingerprint or '—' }}</span></td></tr>
+            <tr><th>IP</th><td><span class="mono">{{ case.ip_address or '—' }}</span></td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-h"><div><h2>Vendor checks</h2><p>{{ case.vendor }} decision: <span class="badge {{ vendor_badges.get(case.vendor_decision) }}">{{ case.vendor_decision }}</span></p></div></div>
+        <div class="card-b" style="padding:6px 18px">
+          <table class="kv">
+            {% for k, v in case.vendor_checks.items() %}<tr><th>{{ k | capitalize }}</th><td><span class="badge {{ vendor_badges.get(v, 'badge-gray') }}">{{ v }}</span></td></tr>{% else %}<tr><td class="muted">No check detail from vendor.</td></tr>{% endfor %}
+          </table>
+          <p class="hint" style="margin:10px 0 6px">Documents and selfies stay in the vendor's vault; a production build opens them through short-lived signed URLs with the access logged.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card flush">
+      <div class="card-h"><div><h2>Linked applications</h2><p>Other cases sharing this device, address or IP. This is the join Power Apps can't express.</p></div></div>
+      <div class="card-b">
+      {% if linked %}
+      <table class="table">
+        <thead><tr><th>Applicant</th><th>Shares</th><th>Status</th><th>Risk</th><th>Received</th></tr></thead>
+        <tbody>
+        {% for other, shared in linked %}
+          <tr>
+            <td><a href="/kyc/{{ other.id }}">{{ other.applicant_name }}</a><div class="sub">{{ other.applicant_email }}</div></td>
+            <td>{% for s in shared %}<span class="tag">{{ s }}</span> {% endfor %}</td>
+            <td><span class="badge {{ status_badges.get(other.status) }}">{{ other.status }}</span></td>
+            <td><span class="badge {{ risk_badges.get(other.risk_band) }}">{{ other.risk_band }}</span></td>
+            <td class="small muted nowrap">{{ other.created_at.strftime("%b %d, %H:%M") }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}{{ empty("No linked applications", "Nothing else shares this device, address or IP.", "check-circle") }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-h"><div><h2>Decision</h2><p>{% if case.status == 'pending' %}Needs an analyst with <code>kyc.review</code>{% else %}{{ 'Automatic' if case.auto_decided else 'By ' ~ case.decided_by_email }}{% endif %}</p></div></div>
+      <div class="card-b">
+        {% if case.status != 'pending' %}
+        <div class="alert {{ 'alert-success' if case.status == 'approved' else 'alert-error' }}" style="margin:0">{{ icon('check-circle' if case.status == 'approved' else 'x-circle') }}<div><strong>{{ case.status | capitalize }}</strong>{% if case.decided_at %} on {{ case.decided_at.strftime("%b %d, %Y %H:%M") }} UTC{% endif %}{% if case.decision_reason %}<div class="small">&ldquo;{{ case.decision_reason }}&rdquo;</div>{% endif %}</div></div>
+        <p class="hint" style="margin-top:12px">Published as <code>kyc.decision.v1</code>. The refunds app shows this customer's risk on their transactions without reading KYC tables.</p>
+        {% elif 'kyc.review' in perms %}
+        <form method="post" action="/kyc/{{ case.id }}/decide" style="display:grid;gap:10px">
+          <div><label for="reason">Reason</label><textarea id="reason" name="reason" style="min-height:80px" placeholder="Required to reject; recorded in the audit log and sent to refunds as context"></textarea></div>
+          <button class="btn btn-success btn-block" type="submit" name="decision" value="approve">{{ icon("check") }} Approve</button>
+          <button class="btn btn-danger btn-block" type="submit" name="decision" value="reject">Reject</button>
+        </form>
+        <p class="hint" style="margin-top:12px">Rejecting re-scores every pending case that shares this device, address or IP.</p>
+        {% else %}
+        <div class="small muted">Waiting for an analyst. You have read-only access.</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><div><h2>Audit trail</h2></div></div>
+      <div class="card-b">
+      {% if trail %}
+      <ul class="timeline">
+        {% for ev in trail %}
+        <li><div class="h"><strong>{{ (ev.actor_email or 'system').split('@')[0] }}</strong> <span class="muted">{{ ev.action.split('.')[-1].replace('_', ' ') }}</span></div>
+          <div class="m">{{ ev.at.strftime("%b %d, %H:%M:%S") }}{% if ev.reason %} · {{ ev.reason }}{% endif %}</div>
+          {% if ev.before and ev.after %}<div class="diff">{% for k, v in ev.after.items() %}{% if ev.before.get(k) != v %}<span class="chg">{{ k }}: <span class="old">{{ ev.before.get(k) }}</span> → <span class="new">{{ v }}</span></span>{% endif %}{% endfor %}</div>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}{{ empty("No audit events", "", "shield") }}{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -18,7 +18,7 @@
   {{ stat("Pending approvals", pending, "check-circle", "tint-amber" if pending else "tint-green", "waiting on a checker") }}
   {{ stat("Feature flags", flag_count, "flag", "tint-indigo", flags_on ~ " live") }}
   {{ stat("Refunded today", refunded_today, "dollar", "tint-green", refund_pending ~ " pending") }}
-  {{ stat("Open feedback", open_feedback, "chat", "tint-blue", "from the people using these tools") }}
+  {{ stat("KYC awaiting review", kyc_pending, "shield", "tint-red" if kyc_high else "tint-indigo", kyc_high ~ " high risk") }}
 </div>
 
 <div class="split">
@@ -29,6 +29,12 @@
         <div class="t">Feature flags</div>
         <p>Per-environment flags and rollouts. Production changes need a second approver; SDKs poll a cached snapshot.</p>
         <div class="foot"><span>{{ flag_count }} flags</span><span class="go">Open {{ icon("arrow-right") }}</span></div>
+      </a>
+      <a class="tile" href="/kyc">
+        <div class="ic tint-red">{{ icon("shield") }}</div>
+        <div class="t">KYC review {% if kyc_high %}<span class="badge badge-red">{{ kyc_high }} high</span>{% endif %}</div>
+        <p>Cases from the vendor's signed webhook. Rules link applicants by device, address and IP; analysts decide; decisions flow to refunds as events.</p>
+        <div class="foot"><span>{{ kyc_pending }} pending</span><span class="go">Open {{ icon("arrow-right") }}</span></div>
       </a>
       <a class="tile" href="/refunds">
         <div class="ic tint-green">{{ icon("refund") }}</div>
