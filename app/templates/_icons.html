@@ -37,6 +37,10 @@
 </svg>
 {%- endmacro %}
 
+{% macro th_sort(label, key, sort, dir, sort_url, cls="") -%}
+<th class="{{ cls }}"><a class="th-sort{{ ' on' if sort == key }}" href="{{ sort_url(key) }}">{{ label }}<span class="dir">{% if sort == key %}{{ '&uarr;' if dir == 'asc' else '&darr;' }}{% else %}&#8597;{% endif %}</span></a></th>
+{%- endmacro %}
+
 {% macro avatar(u, cls="") -%}
 {% set initials = (u.name.split(" ") | map("first") | join(""))[:2] if u and u.name else "?" %}
 <span class="avatar av-{{ u.role if u else 'viewer' }} {{ cls }}" title="{{ u.email if u else '' }}">{{ initials | upper }}</span>

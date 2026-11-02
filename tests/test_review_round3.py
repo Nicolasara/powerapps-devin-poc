@@ -42,3 +42,24 @@ def test_duplicate_webhook_after_insert_returns_existing_case(anon, db):
     payload = _payload(ref="race1", email="race1@example.com")
     assert _post(anon, payload).status_code == 201
     assert _post(anon, payload).status_code == 200
+
+
+def test_failed_intake_leaves_no_half_case_and_retry_processes(anon, db, monkeypatch):
+    from app.apps.kyc import service
+    from app.apps.kyc.models import KycCase
+    real = service.rescore
+    calls = {"n": 0}
+
+    def boom(db_, case):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise service.KycError("scoring backend down")
+        return real(db_, case)
+    monkeypatch.setattr(service, "rescore", boom)
+    payload = _payload(ref="half1", email="half1@example.com")
+    assert _post(anon, payload).status_code == 400
+    assert db.scalar(select(KycCase).where(KycCase.vendor_ref == "half1")) is None
+    resp = _post(anon, payload)
+    assert resp.status_code == 201
+    db.expire_all()
+    assert db.scalar(select(KycCase).where(KycCase.vendor_ref == "half1")).status in ("approved", "pending")

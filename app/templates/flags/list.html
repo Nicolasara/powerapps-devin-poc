@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon, empty %}
+{% from "_icons.html" import th_sort, icon, empty %}
 {% from "flags/_macros.html" import env_badge, state_badge, rollout_bar, switch %}
 {% block title %}Feature flags{% endblock %}
 {% block crumbs %}<span class="sep">/</span><span class="cur">Feature flags</span>{% endblock %}
@@ -25,7 +25,7 @@
   <table class="table pipeline">
     <thead>
       <tr>
-        <th>Flag</th>
+        {{ th_sort("Flag", "flag", sort, dir, sort_url) }}
         {% for env in environments %}<th class="envcol">{{ env_badge(env) }}</th>{% if not loop.last %}<th class="arrow"></th>{% endif %}{% endfor %}
       </tr>
     </thead>
