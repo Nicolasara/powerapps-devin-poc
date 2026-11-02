@@ -33,8 +33,9 @@ def _query(resp) -> dict[str, list[str]]:
 
 def test_dev_toggle_applies_in_one_click(login, db, flags):
     oscar = login("oscar")
-    listing = oscar.get("/flags")
-    assert f'<form class="inline" method="post" action="/flags/{flags["dev"]}/toggle">' in listing.text
+    detail = oscar.get(f"/flags/{flags['dev']}")
+    assert f'action="/flags/{flags["dev"]}/toggle"' in detail.text  # one-click form on the stage card
+    assert "/toggle/confirm" not in detail.text
     assert oscar.get(f"/flags/{flags['dev']}/toggle/confirm").status_code == 404
 
     resp = oscar.post(f"/flags/{flags['dev']}/toggle", follow_redirects=False)
