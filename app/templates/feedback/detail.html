@@ -27,18 +27,21 @@
     <div class="card">
       <div class="card-h"><div><h2>Triage</h2><p>Platform team only</p></div></div>
       <div class="card-b">
-        <p class="small muted" style="margin:0 0 12px">Hand this to engineering as a GitHub issue in <code>{{ repo }}</code>. Title and body are pre-filled from the ticket; Devin picks it up from there.</p>
-        <a class="btn btn-primary btn-block" href="{{ issue_url }}" target="_blank" rel="noopener">{{ icon("github") }} File as GitHub issue {{ icon("external") }}</a>
-        <form method="post" action="/feedback/{{ ticket.id }}/mark-filed" style="margin-top:16px">
-          <label for="github_issue_url">Link the created issue</label>
-          <input type="url" id="github_issue_url" name="github_issue_url" required value="{{ ticket.github_issue_url or '' }}" placeholder="https://github.com/{{ repo }}/issues/123">
-          <button class="btn btn-block" type="submit" style="margin-top:8px">{{ icon("check") }} Mark as filed</button>
+        {% if ticket.github_issue_url %}
+        <p class="small muted" style="margin:0 0 12px">Filed to <code>{{ repo }}</code> with the <span class="badge badge-indigo">{{ label }}</span> label. Devin picks it up from the label and opens a pull request.</p>
+        <a class="btn btn-block" href="{{ ticket.github_issue_url }}" target="_blank" rel="noopener">{{ icon("github") }} Open issue {{ icon("external") }}</a>
+        {% else %}
+        <p class="small muted" style="margin:0 0 12px">One click creates the issue in <code>{{ repo }}</code> through the GitHub API, labelled <span class="badge badge-indigo">{{ label }}</span> so Devin picks it up. Title and body come from the ticket; nobody retypes anything.</p>
+        <form method="post" action="/feedback/{{ ticket.id }}/file">
+          <button class="btn btn-primary btn-block" type="submit">{{ icon("github") }} Create GitHub issue</button>
         </form>
+        {% if auto_file %}<p class="hint" style="margin:10px 0 0">Auto-filing is on (<code>FEEDBACK_AUTO_FILE</code>); this ticket was not filed because the GitHub call failed. Check the audit log.</p>{% endif %}
+        {% endif %}
       </div>
     </div>
     {% else %}
     <div class="card"><div class="card-b small muted">
-      <div style="display:flex;gap:10px;align-items:flex-start">{{ icon("info") }}<div><strong style="color:var(--text)">What happens next</strong><br>The platform team reviews this ticket, files it as an engineering issue, and Devin opens a pull request. You'll see the status change here.</div></div>
+      <div style="display:flex;gap:10px;align-items:flex-start">{{ icon("info") }}<div><strong style="color:var(--text)">What happens next</strong><br>{% if ticket.github_issue_url %}This ticket is filed to GitHub with the <code>{{ label }}</code> label; Devin picks it up and opens a pull request. You'll see the status change here.{% else %}The platform team reviews this ticket and files it to GitHub with one click (label <code>{{ label }}</code>); Devin picks it up and opens a pull request. You'll see the status change here.{% endif %}</div></div>
     </div></div>
     {% endif %}
   </div>

@@ -39,3 +39,8 @@ def test_flags_list_sorts(login):
 def test_refunds_view_tabs_encode_search(login):
     html = login("oscar").get("/refunds", params={"q": "Smith & Jones"}).text
     assert 'href="/refunds?view=requests&amp;q=Smith+%26+Jones"' in html
+
+
+def test_refunds_clear_keeps_view_drops_search(login):
+    html = login("oscar").get("/refunds", params={"view": "requests", "q": "Smith"}).text
+    assert 'href="/refunds?view=requests">Clear</a>' in html

@@ -70,7 +70,7 @@ Open http://localhost:8000 and log in as one of the demo users:
 | April Approver (`april@corp.test`) | approver | approve prod flag changes and refunds under $1,000 |
 | Adam Admin (`adam@corp.test`) | admin | everything, including refunds of $1,000 or more |
 
-"File as GitHub issue" targets `Nicolasara/powerapps-devin-poc` by default; set `GITHUB_REPO=owner/repo` to change it.
+Triage creates the GitHub issue through the API (`app/platform/github.py`, label `devin` so an automation can pick it up). Without `GITHUB_TOKEN` a fake tracker is used; set `GITHUB_TOKEN` and `GITHUB_REPO=owner/repo` for real issues, and `FEEDBACK_AUTO_FILE=1` to file on submission instead of on triage.
 
 ## How to test
 
@@ -89,9 +89,7 @@ queue. A smoke test renders every page as every role against the full demo seed.
 1. Log in as **Oscar Operator** and use the app normally: toggle a dev flag, request a refund.
 2. When something is awkward, click the floating **Feedback** button and describe the friction. The ticket
    records which page it came from.
-3. Log in as **Adam Admin** (the platform team). On the ticket, click **File as GitHub issue**. This opens a
-   pre-filled issue with the page, the kind, the reporter's role and the description. Paste the issue URL back
-   to mark the ticket as filed.
+3. Log in as **Adam Admin** (the platform team). On the ticket, click **Create GitHub issue**: the app files it with the `devin` label and links it.
 4. Devin picks up the issue, changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
 
