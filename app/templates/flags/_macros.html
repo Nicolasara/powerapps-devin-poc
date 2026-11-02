@@ -1,16 +1,25 @@
 {% macro env_badge(env) -%}
-<span class="badge {{ {'prod': 'badge-red', 'staging': 'badge-amber'}.get(env, 'badge-gray') }}">{{ env }}</span>
+<span class="badge {{ {'prod': 'badge-red', 'staging': 'badge-amber'}.get(env, 'badge-blue') }}">{{ env }}</span>
 {%- endmacro %}
 
 {% macro state_badge(flag) -%}
-{% if flag.enabled %}<span class="badge badge-green">ON</span>{% else %}<span class="badge badge-gray">OFF</span>{% endif %}
+{% if flag.enabled %}<span class="badge badge-green">On</span>{% else %}<span class="badge badge-gray">Off</span>{% endif %}
 {%- endmacro %}
 
 {% macro rollout_bar(pct) -%}
-<span style="display:inline-flex;align-items:center;gap:.5rem;">
-  <span style="display:inline-block;width:80px;height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden;">
-    <span style="display:block;height:100%;width:{{ pct }}%;background:#2563eb;"></span>
-  </span>
-  <span>{{ pct }}%</span>
-</span>
+<span class="bar"><span class="track"><span class="fill" style="width:{{ pct }}%"></span></span><span>{{ pct }}%</span></span>
+{%- endmacro %}
+
+{# The visual toggle. Non-prod applies in one click; prod submits an approval request. #}
+{% macro switch(flag, pending=False) -%}
+{% if flag.environment == 'prod' %}
+<form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
+  <button class="switch {{ 'on' if flag.enabled }}" type="submit" role="switch" aria-checked="{{ 'true' if flag.enabled else 'false' }}"
+          {% if pending %}disabled title="A change is already awaiting approval"{% else %}title="Request {{ 'disable' if flag.enabled else 'enable' }} (needs approval)"{% endif %}></button>
+</form>
+{% else %}
+<form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
+  <button class="switch {{ 'on' if flag.enabled }}" type="submit" role="switch" aria-checked="{{ 'true' if flag.enabled else 'false' }}" title="{{ 'Disable' if flag.enabled else 'Enable' }}"></button>
+</form>
+{% endif %}
 {%- endmacro %}

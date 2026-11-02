@@ -19,7 +19,7 @@ router = APIRouter(prefix="/feedback")
 
 
 def github_repo() -> str:
-    return os.environ.get("GITHUB_REPO", "OWNER/powerapps-devin-poc")
+    return os.environ.get("GITHUB_REPO", "Nicolasara/powerapps-devin-poc")
 
 
 def github_issue_url(ticket: FeedbackTicket, reporter_role: str) -> str:

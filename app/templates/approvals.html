@@ -1,61 +1,67 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, empty, avatar %}
 {% block title %}Approvals{% endblock %}
+{% block crumbs %}<span class="sep">/</span><span class="cur">Approvals</span>{% endblock %}
 {% block content %}
-<h1>Approvals</h1>
-<p class="muted">Pending maker/checker requests from every app. You can't approve your own request, and you need the permission listed.</p>
+<div class="ph"><div><h1>Approvals</h1><p>Maker/checker requests from every app land here. You can't approve your own request, and you need the permission each one asks for.</p></div></div>
 
-<div class="card" style="padding:0">
-  <table class="table">
-    <thead><tr><th>#</th><th>Summary</th><th>Kind</th><th>Requested by</th><th>Requires</th><th style="width:330px">Decision</th></tr></thead>
-    <tbody>
-    {% for row in rows %}
-      {% set a = row.a %}
-      {% set maker = users.get(a.requested_by) %}
-      <tr>
-        <td>{{ a.id }}</td>
-        <td>{{ a.summary }}<br><span class="muted" style="font-size:12px">{{ a.entity_type }} {{ a.entity_id }} · {{ a.requested_at.strftime("%Y-%m-%d %H:%M") }}</span></td>
-        <td><code>{{ a.kind }}</code></td>
-        <td>{{ maker.name if maker else a.requested_by }}<br><span class="muted" style="font-size:12px">{{ maker.role if maker else "" }}</span></td>
-        <td><span class="badge badge-amber">{{ a.required_permission }}</span></td>
-        <td>
-          {% if row.blocked %}
-            <span class="muted">{{ row.blocked }}</span>
-          {% else %}
-            <form method="post" action="/approvals/{{ a.id }}/decide">
-              <input type="text" name="reason" placeholder="Reason (optional)" style="margin-bottom:6px">
-              <button class="btn btn-primary" type="submit" name="decision" value="approve">Approve</button>
-              <button class="btn btn-danger" type="submit" name="decision" value="reject">Reject</button>
-            </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="6" class="muted">Nothing waiting for approval.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{% if rows %}
+<div class="grid mb" style="gap:12px">
+{% for row in rows %}
+  {% set a = row.a %}{% set maker = users.get(a.requested_by) %}
+  <div class="card" style="margin:0"><div class="card-b" style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:center">
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      <div class="dot {{ 'tint-indigo' if a.kind.startswith('flag') else 'tint-green' }}" style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex-shrink:0">{{ icon('flag' if a.kind.startswith('flag') else 'refund') }}</div>
+      <div>
+        <div style="font-weight:600;font-size:14.5px">{{ a.summary }}</div>
+        <div class="small muted" style="margin-top:3px">#{{ a.id }} · <span class="tag">{{ a.kind }}</span> · {{ a.entity_type }} {{ a.entity_id }} · requested {{ a.requested_at.strftime("%b %d, %H:%M") }}</div>
+        <div class="small" style="margin-top:8px;display:flex;align-items:center;gap:8px">
+          {% if maker %}{{ avatar(maker, "") }}{% endif %}<span>{{ maker.name if maker else a.requested_by }} <span class="muted">· {{ maker.role if maker else "" }}</span></span>
+          <span class="faint">·</span><span class="muted">needs</span> <span class="badge badge-amber plain">{{ a.required_permission }}</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      {% if row.blocked %}
+        <div class="alert alert-info" style="margin:0">{{ icon("lock") }}<span>{{ row.blocked }}</span></div>
+      {% else %}
+        <form method="post" action="/approvals/{{ a.id }}/decide" style="display:grid;gap:8px">
+          <input type="text" name="reason" placeholder="Reason (optional)">
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-success" style="flex:1" type="submit" name="decision" value="approve">{{ icon("check") }} Approve</button>
+            <button class="btn" style="flex:1" type="submit" name="decision" value="reject">Reject</button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </div></div>
+{% endfor %}
 </div>
+{% else %}
+<div class="card"><div class="card-b">{{ empty("Inbox zero", "Nothing is waiting for approval right now.", "check-circle") }}</div></div>
+{% endif %}
 
 {% if recent %}
-<h2>Recently decided</h2>
-<div class="card" style="padding:0">
+<div class="card flush">
+  <div class="card-h"><div><h2>Recently decided</h2><p>Decisions stay in the audit log forever; this is the short view.</p></div></div>
+  <div class="card-b">
   <table class="table">
-    <thead><tr><th>#</th><th>Summary</th><th>Status</th><th>Requested by</th><th>Decided by</th><th>Reason</th></tr></thead>
+    <thead><tr><th>#</th><th>Summary</th><th>Decision</th><th>Requested by</th><th>Decided by</th><th>Reason</th></tr></thead>
     <tbody>
     {% for a in recent %}
-      {% set maker = users.get(a.requested_by) %}
-      {% set checker = users.get(a.decided_by) if a.decided_by else None %}
+      {% set maker = users.get(a.requested_by) %}{% set checker = users.get(a.decided_by) if a.decided_by else None %}
       <tr>
-        <td>{{ a.id }}</td>
-        <td>{{ a.summary }}</td>
+        <td class="muted">{{ a.id }}</td>
+        <td class="primary-cell">{{ a.summary }}</td>
         <td><span class="badge {{ 'badge-green' if a.status == 'approved' else 'badge-red' }}">{{ a.status }}</span></td>
         <td>{{ maker.name if maker else a.requested_by }}</td>
         <td>{{ checker.name if checker else "auto" }}</td>
-        <td class="muted">{{ a.decision_reason or "" }}</td>
+        <td class="muted small">{{ a.decision_reason or "" }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endif %}
 {% endblock %}

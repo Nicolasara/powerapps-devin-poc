@@ -1,86 +1,86 @@
 {% extends "base.html" %}
-{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar %}
+{% from "_icons.html" import icon, empty %}
+{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar, switch %}
 {% block title %}{{ flag.key }} ({{ flag.environment }}){% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/flags">Feature flags</a><span class="sep">/</span><span class="cur">{{ flag.key }}</span>{% endblock %}
 {% block content %}
-<p><a href="/flags">&larr; All flags</a></p>
-<h1><code>{{ flag.key }}</code> {{ env_badge(flag.environment) }}</h1>
-{% if notice %}<div class="flash">{{ notice }}</div>{% endif %}
-
-<div class="grid">
-  <div class="card kpi">
-    <div class="muted">State</div>
-    <div>{{ state_badge(flag) }}</div>
+<div class="ph">
+  <div>
+    <div class="title-row"><h1 class="mono" style="font-size:21px">{{ flag.key }}</h1>{{ env_badge(flag.environment) }}{{ state_badge(flag) }}{% if pending %}<span class="badge badge-amber">Pending approval</span>{% endif %}</div>
+    <p>{{ flag.description or 'No description.' }}</p>
   </div>
-  <div class="card kpi">
-    <div class="muted">Rollout</div>
-    <div>{{ rollout_bar(flag.rollout_percent) }}</div>
-  </div>
-  <div class="card kpi">
-    <div class="muted">Owner team</div>
-    <div>{{ flag.owner_team or '-' }}</div>
-  </div>
-  <div class="card kpi">
-    <div class="muted">Last updated</div>
-    <div>{{ flag.updated_at.strftime('%Y-%m-%d %H:%M') if flag.updated_at else '' }}</div>
-    <div class="muted" style="font-size:.85em;">{{ flag.updated_by_email }}</div>
-  </div>
+  <div class="actions"><a class="btn btn-ghost" href="/flags">{{ icon("arrow-left") }} All flags</a></div>
 </div>
 
-<div class="card">
-  <p>{{ flag.description or 'No description.' }}</p>
+<div class="split">
+  <div>
+    <div class="grid g3 mb">
+      <div class="stat"><div class="ic tint-indigo">{{ icon("activity") }}</div><div><div class="lbl">Rollout</div><div class="val">{{ flag.rollout_percent }}%</div><div class="sub">of eligible traffic</div></div></div>
+      <div class="stat"><div class="ic tint-slate">{{ icon("user") }}</div><div><div class="lbl">Owner team</div><div class="val" style="font-size:18px">{{ flag.owner_team or '—' }}</div></div></div>
+      <div class="stat"><div class="ic tint-blue">{{ icon("clock") }}</div><div><div class="lbl">Last change</div><div class="val" style="font-size:18px">{{ flag.updated_at.strftime('%b %d, %H:%M') if flag.updated_at else '—' }}</div><div class="sub">{{ flag.updated_by_email or '' }}</div></div></div>
+    </div>
 
-  {% if pending %}
-  <div class="flash">
-    <span class="badge badge-amber">Pending approval</span>
-    {% for a in pending %}{{ a.summary }} (request #{{ a.id }}){% if not loop.last %}; {% endif %}{% endfor %}
+    <div class="card">
+      <div class="card-h"><div><h2>History</h2><p>Every change to this flag, from the shared audit log</p></div></div>
+      <div class="card-b">
+      {% if history %}
+      <ul class="timeline">
+        {% for ev in history %}
+        <li>
+          <div class="h"><strong>{{ (ev.actor_email or 'system').split('@')[0] }}</strong> <span class="muted">{{ ev.action.split('.')[-1].replace('_', ' ') }}</span>{% if ev.reason %} <span class="muted">· {{ ev.reason }}</span>{% endif %}</div>
+          <div class="m">{{ ev.at.strftime('%b %d, %Y %H:%M:%S') if ev.at else '' }}</div>
+          {% if ev.before or ev.after %}
+          <div class="diff">
+            {% for k, v in (ev.after or {}).items() %}{% set b = (ev.before or {}).get(k) %}{% if b != v %}<span class="chg">{{ k }}: {% if b is not none %}<span class="old">{{ b }}</span> → {% endif %}<span class="new">{{ v }}</span></span>{% endif %}{% endfor %}
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}{{ empty("No changes yet", "Toggle or change the rollout to see history here.", "clock") }}{% endif %}
+      </div>
+    </div>
   </div>
-  {% endif %}
 
-  {% if 'flags.write' in perms %}
-  <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-    <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
-      <button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit" {% if pending %}disabled{% endif %}>
-        {% if flag.environment == 'prod' %}Request {{ 'disable' if flag.enabled else 'enable' }}{% else %}{{ 'Disable' if flag.enabled else 'Enable' }}{% endif %}
-      </button>
-    </form>
-
-    <form class="inline" method="post" action="/flags/{{ flag.id }}/rollout">
-      <label for="rollout_percent">Rollout %</label>
-      <input id="rollout_percent" name="rollout_percent" type="number" min="0" max="100"
-             value="{{ flag.rollout_percent }}" style="width:5rem;">
-      <button class="btn btn-secondary" type="submit" {% if flag.environment == 'prod' and pending %}disabled{% endif %}>
-        {{ 'Request rollout change' if flag.environment == 'prod' else 'Set rollout' }}
-      </button>
-    </form>
+  <div>
+    {% if 'flags.write' in perms %}
+    <div class="card">
+      <div class="card-h"><div><h2>State</h2><p>{% if flag.environment == 'prod' %}Changes need a second approver{% else %}Applies immediately in {{ flag.environment }}{% endif %}</p></div>{{ switch(flag, pending) }}</div>
+      <div class="card-b">
+        {% if pending %}
+        <div class="alert alert-warn" style="margin-bottom:14px">{{ icon("clock") }}<div>{% for a in pending %}<div>{{ a.summary }} <span class="muted">(request #{{ a.id }})</span></div>{% endfor %}<a href="/approvals" class="small">Open approvals</a></div></div>
+        {% endif %}
+        {% if flag.environment == 'prod' %}
+        <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle" style="display:block">
+          <button class="btn btn-block {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit" {% if pending %}disabled{% endif %}>{{ icon("check-circle") }} Request {{ 'disable' if flag.enabled else 'enable' }}</button>
+        </form>
+        {% else %}
+        <form method="post" action="/flags/{{ flag.id }}/toggle">
+          <button class="btn btn-block {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit">{{ icon("zap") }} {{ 'Disable' if flag.enabled else 'Enable' }}</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/flags/{{ flag.id }}/rollout" style="margin-top:18px">
+          <label for="rollout_percent">Rollout percentage</label>
+          <div style="display:flex;gap:8px">
+            <input id="rollout_percent" name="rollout_percent" type="number" min="0" max="100" value="{{ flag.rollout_percent }}" style="width:90px">
+            <button class="btn" type="submit" {% if flag.environment == 'prod' and pending %}disabled{% endif %}>{{ 'Request change' if flag.environment == 'prod' else 'Set rollout' }}</button>
+          </div>
+          <div class="hint">{{ rollout_bar(flag.rollout_percent) }}</div>
+        </form>
+        {% if flag.environment == 'prod' %}<p class="hint" style="margin-top:14px">Prod changes are applied once a different user with <code>flags.approve</code> approves them.</p>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+    <div class="card">
+      <div class="card-h"><div><h2>Serving</h2><p>How services read this flag</p></div></div>
+      <div class="card-b small">
+        <table class="kv">
+          <tr><th>Snapshot</th><td><a href="/flags/api/snapshot?environment={{ flag.environment }}" target="_blank" rel="noopener" class="mono">/flags/api/snapshot?environment={{ flag.environment }}</a></td></tr>
+          <tr><th>Caching</th><td>ETag + <code>If-None-Match</code>, 304 when unchanged</td></tr>
+          <tr><th>Events</th><td><code>flag.changed.v1</code> on every applied change</td></tr>
+        </table>
+      </div>
+    </div>
   </div>
-  {% if flag.environment == 'prod' %}
-  <p class="muted" style="font-size:.85em;">Prod changes are applied once a different user with <code>flags.approve</code> approves them.</p>
-  {% endif %}
-  {% endif %}
-</div>
-
-<div class="card">
-  <h2>History</h2>
-  {% if history %}
-  <table class="table">
-    <thead>
-      <tr><th>When</th><th>Who</th><th>Action</th><th>Before</th><th>After</th><th>Reason</th></tr>
-    </thead>
-    <tbody>
-      {% for ev in history %}
-      <tr>
-        <td style="white-space:nowrap;">{{ ev.at.strftime('%Y-%m-%d %H:%M:%S') if ev.at else '' }}</td>
-        <td>{{ ev.actor_email }}</td>
-        <td><span class="badge badge-gray">{{ ev.action }}</span></td>
-        <td>{% if ev.before %}{% for k, v in ev.before.items() %}<div><span class="muted">{{ k }}:</span> {{ v }}</div>{% endfor %}{% else %}<span class="muted">-</span>{% endif %}</td>
-        <td>{% if ev.after %}{% for k, v in ev.after.items() %}<div><span class="muted">{{ k }}:</span> {{ v }}</div>{% endfor %}{% else %}<span class="muted">-</span>{% endif %}</td>
-        <td class="muted">{{ ev.reason or '' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">No changes recorded.</p>
-  {% endif %}
 </div>
 {% endblock %}

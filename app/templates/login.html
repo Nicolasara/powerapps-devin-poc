@@ -1,33 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Log in{% endblock %}
-{% block content %}
-<h1>Log in</h1>
-<div class="flash">
-  <strong>Development login.</strong> This page stands in for Microsoft Entra ID SSO. In production the OIDC callback
-  maps Entra group claims to a role; everything downstream (permission checks, audit, approvals) stays the same.
-</div>
-{% if user %}<p class="muted">Currently logged in as {{ user.name }} ({{ user.role }}). Pick another user to switch.</p>{% endif %}
-<div class="card" style="padding:0">
-  <table class="table">
-    <thead><tr><th>User</th><th>Role</th><th>Permissions</th><th></th></tr></thead>
-    <tbody>
-    {% for u in users %}
-      <tr>
-        <td><strong>{{ u.name }}</strong><br><span class="muted">{{ u.email }}</span></td>
-        <td><span class="badge {{ {'viewer': 'badge-gray', 'operator': 'badge-amber', 'approver': 'badge-green', 'admin': 'badge-red'}.get(u.role, 'badge-gray') }}">{{ u.role }}</span></td>
-        <td class="muted" style="font-size:12px">{{ role_perms[u.id] | join(", ") }}</td>
-        <td>
-          <form class="inline" method="post" action="/login">
-            <input type="hidden" name="user_id" value="{{ u.id }}">
-            <input type="hidden" name="next" value="{{ next }}">
-            <button class="btn btn-primary" type="submit">Log in as {{ u.name.split(" ")[0] }}</button>
-          </form>
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="4" class="muted">No users yet. Run <code>python -m app.seed</code>.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{% from "_icons.html" import icon, avatar, role_badge %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<div class="auth">
+  <section class="hero">
+    <div class="brand" style="padding:0"><span class="logo">{{ icon("layers") }}</span><span><div class="t" style="color:#fff">Acme Internal</div><div class="s" style="color:#a5b4fc">Ops console</div></span></div>
+    <h1>Internal tools, built like product code.</h1>
+    <p>Feature flags, refunds and the approvals inbox share one foundation: SSO, roles, an append-only audit log and maker/checker approvals.</p>
+    <ul>
+      <li>{{ icon("lock") }} Single sign-on via Entra ID, roles from group claims</li>
+      <li>{{ icon("shield") }} Every change audited with before/after values</li>
+      <li>{{ icon("git-pr") }} Every change shipped as a reviewed pull request</li>
+    </ul>
+    <div class="small" style="color:#a5b4fc">Prototype · fake data only</div>
+  </section>
+  <section class="pane">
+    <div class="box">
+      <h1 style="font-size:24px">Sign in</h1>
+      <p class="muted" style="margin:6px 0 24px">Use your company account to continue.</p>
+      <div class="ms-btn" title="Entra ID sign-in is wired in production; this prototype uses the dev personas below">{{ icon("microsoft") }} Continue with Microsoft</div>
+      <div class="divider">dev personas</div>
+      {% if user %}<p class="small muted" style="margin:0 0 10px">Signed in as {{ user.name }} ({{ user.role }}). Pick another persona to switch.</p>{% endif %}
+      {% for u in users %}
+      <form method="post" action="/login">
+        <input type="hidden" name="user_id" value="{{ u.id }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="persona" type="submit">
+          {{ avatar(u) }}
+          <span class="who"><div class="n">{{ u.name }} <span class="muted" style="font-weight:400">· {{ u.role }}</span></div>
+          <div class="d">{{ {'viewer':'Read-only access to flags, refunds and audit','operator':'Toggles non-prod flags, requests prod changes and refunds','approver':'Everything an operator can, plus approving prod flags and refunds under $1,000','admin':'Full access, including large refunds'}.get(u.role, '') }}</div></span>
+          {{ icon("chevron-right") }}
+        </button>
+      </form>
+      {% else %}
+      <p class="muted">No users yet. Run <code>python -m app.seed</code>.</p>
+      {% endfor %}
+      <p class="small faint" style="margin-top:20px">In production the OIDC callback maps Entra group claims to one of these roles. Everything downstream (permissions, audit, approvals) is identical.</p>
+    </div>
+  </section>
 </div>
 {% endblock %}

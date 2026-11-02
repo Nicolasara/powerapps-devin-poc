@@ -1,31 +1,46 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, avatar, role_badge %}
 {% block title %}Feedback #{{ ticket.id }}{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/feedback">Feedback</a><span class="sep">/</span><span class="cur">#{{ ticket.id }}</span>{% endblock %}
 {% block content %}
-{% set badge = {"open": "badge-amber", "filed": "badge-green", "done": "badge-gray"} %}
-<p><a href="/feedback">&larr; Feedback queue</a></p>
-<h1>#{{ ticket.id }} {{ ticket.title }}</h1>
-<div class="card">
-  <table class="table">
-    <tr><th style="width:160px">Status</th><td><span class="badge {{ badge.get(ticket.status, 'badge-gray') }}">{{ ticket.status }}</span></td></tr>
-    <tr><th>Kind</th><td>{{ ticket.kind }}</td></tr>
-    <tr><th>Page</th><td>{% if ticket.page_path %}<a href="{{ ticket.page_path }}"><code>{{ ticket.page_path }}</code></a>{% else %}<span class="muted">-</span>{% endif %}</td></tr>
-    <tr><th>Reporter</th><td>{{ reporter.name if reporter else ticket.submitted_by_email }} <span class="muted">({{ reporter_role }})</span></td></tr>
-    <tr><th>Created</th><td>{{ ticket.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</td></tr>
-    <tr><th>GitHub issue</th><td>{% if ticket.github_issue_url %}<a href="{{ ticket.github_issue_url }}" target="_blank" rel="noopener">{{ ticket.github_issue_url }}</a>{% else %}<span class="muted">not filed yet</span>{% endif %}</td></tr>
-  </table>
-  <h3 style="margin-top:16px">Description</h3>
-  <pre>{{ ticket.body or "(no description)" }}</pre>
+{% set badge = {"open": "badge-amber", "filed": "badge-indigo", "done": "badge-green"} %}
+{% set kind_badge = {"bug": "badge-red", "friction": "badge-amber", "idea": "badge-blue"} %}
+<div class="ph">
+  <div><div class="title-row"><h1>{{ ticket.title }}</h1><span class="badge {{ badge.get(ticket.status, 'badge-gray') }}">{{ {'open':'Open','filed':'Filed as issue','done':'Shipped'}.get(ticket.status, ticket.status) }}</span></div>
+  <p>Ticket #{{ ticket.id }} · <span class="badge {{ kind_badge.get(ticket.kind, 'badge-gray') }}">{{ ticket.kind }}</span> · reported {{ ticket.created_at.strftime("%b %d, %Y %H:%M") }} UTC</p></div>
+  <div class="actions"><a class="btn btn-ghost" href="/feedback">{{ icon("arrow-left") }} Queue</a></div>
 </div>
 
-<div class="card">
-  <h2>File as GitHub issue</h2>
-  <p class="muted">Opens a pre-filled issue in <code>{{ repo }}</code>. Once created, paste the issue URL below to link it.</p>
-  <a class="btn btn-primary" href="{{ issue_url }}" target="_blank" rel="noopener">File as GitHub issue</a>
-  <form method="post" action="/feedback/{{ ticket.id }}/mark-filed" style="margin-top:14px">
-    <label for="github_issue_url">Issue URL</label>
-    <input type="url" id="github_issue_url" name="github_issue_url" required
-           value="{{ ticket.github_issue_url or '' }}" placeholder="https://github.com/{{ repo }}/issues/123">
-    <div style="margin-top:10px"><button class="btn btn-secondary" type="submit">Mark as filed</button></div>
-  </form>
+<div class="split">
+  <div>
+    <div class="card">
+      <div class="card-h"><div style="display:flex;align-items:center;gap:10px">{% if reporter %}{{ avatar(reporter) }}{% endif %}<div><h2>{{ reporter.name if reporter else ticket.submitted_by_email }}</h2><p>{{ reporter_role }}{% if ticket.page_path %} · on <a href="{{ ticket.page_path }}" class="mono">{{ ticket.page_path }}</a>{% endif %}</p></div></div></div>
+      <div class="card-b"><div style="white-space:pre-wrap;line-height:1.6">{{ ticket.body or "(no description)" }}</div></div>
+    </div>
+    {% if ticket.github_issue_url %}
+    <div class="alert alert-info">{{ icon("github") }}<div>Tracked as <a href="{{ ticket.github_issue_url }}" target="_blank" rel="noopener">{{ ticket.github_issue_url }}</a>. The fix arrives as a pull request.</div></div>
+    {% endif %}
+  </div>
+
+  <div>
+    {% if "admin" in perms %}
+    <div class="card">
+      <div class="card-h"><div><h2>Triage</h2><p>Platform team only</p></div></div>
+      <div class="card-b">
+        <p class="small muted" style="margin:0 0 12px">Hand this to engineering as a GitHub issue in <code>{{ repo }}</code>. Title and body are pre-filled from the ticket; Devin picks it up from there.</p>
+        <a class="btn btn-primary btn-block" href="{{ issue_url }}" target="_blank" rel="noopener">{{ icon("github") }} File as GitHub issue {{ icon("external") }}</a>
+        <form method="post" action="/feedback/{{ ticket.id }}/mark-filed" style="margin-top:16px">
+          <label for="github_issue_url">Link the created issue</label>
+          <input type="url" id="github_issue_url" name="github_issue_url" required value="{{ ticket.github_issue_url or '' }}" placeholder="https://github.com/{{ repo }}/issues/123">
+          <button class="btn btn-block" type="submit" style="margin-top:8px">{{ icon("check") }} Mark as filed</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="card"><div class="card-b small muted">
+      <div style="display:flex;gap:10px;align-items:flex-start">{{ icon("info") }}<div><strong style="color:var(--text)">What happens next</strong><br>The platform team reviews this ticket, files it as an engineering issue, and Devin opens a pull request. You'll see the status change here.</div></div>
+    </div></div>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

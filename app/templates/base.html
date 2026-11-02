@@ -4,104 +4,73 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Internal Tools{% endblock %} · Internal Tools</title>
-  <style>
-    :root {
-      --bg: #f5f6f8; --panel: #ffffff; --text: #1f2933; --muted: #6b7280; --border: #e3e6ea;
-      --primary: #2453d6; --primary-dark: #1b3fa6; --danger: #c62828; --nav: #111827; --nav-text: #cbd5e1;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-           color: var(--text); background: var(--bg); display: flex; min-height: 100vh; }
-    a { color: var(--primary); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    nav.side { width: 220px; flex-shrink: 0; background: var(--nav); color: var(--nav-text); display: flex; flex-direction: column; padding: 18px 0; }
-    nav.side .brand { color: #fff; font-weight: 600; font-size: 15px; padding: 0 20px 4px; }
-    nav.side .brand-sub { color: #94a3b8; font-size: 12px; padding: 0 20px 18px; }
-    nav.side a.nav { display: flex; justify-content: space-between; align-items: center; color: var(--nav-text); padding: 8px 20px; border-left: 3px solid transparent; }
-    nav.side a.nav:hover { background: #1f2937; color: #fff; text-decoration: none; }
-    nav.side a.nav.active { background: #1f2937; color: #fff; border-left-color: #60a5fa; }
-    nav.side .count { background: #f59e0b; color: #111827; border-radius: 10px; padding: 0 7px; font-size: 11px; font-weight: 600; }
-    nav.side .who { margin-top: auto; padding: 14px 20px 0; border-top: 1px solid #1f2937; font-size: 13px; }
-    nav.side .who .name { color: #fff; }
-    nav.side .who a { color: #93c5fd; }
-    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-    .content { padding: 28px 32px; max-width: 1200px; width: 100%; }
-    h1 { font-size: 22px; margin: 0 0 16px; }
-    h2 { font-size: 17px; margin: 0 0 12px; }
-    h3 { font-size: 15px; margin: 0 0 8px; }
-    footer { margin-top: auto; padding: 14px 32px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); background: var(--panel); }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px; }
-    .grid > .card { margin-bottom: 0; }
-    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; }
-    .kpi .value, .kpi strong { display: block; font-size: 24px; font-weight: 600; }
-    .kpi .label, .kpi span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
-    .btn { display: inline-block; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: #fff; color: var(--text);
-           font: inherit; font-weight: 500; cursor: pointer; text-decoration: none; line-height: 1.4; }
-    .btn:hover { text-decoration: none; filter: brightness(.97); }
-    .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; }
-    .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-    .btn-secondary { background: #eef1f5; border-color: #d7dce3; color: var(--text); }
-    table.table { width: 100%; border-collapse: collapse; background: var(--panel); }
-    table.table th, table.table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    table.table th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 600; background: #fafbfc; }
-    table.table tr:hover td { background: #fafbfd; }
-    .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 500; background: #e5e7eb; color: #374151; white-space: nowrap; }
-    .badge-green { background: #dcfce7; color: #166534; }
-    .badge-red { background: #fee2e2; color: #991b1b; }
-    .badge-amber { background: #fef3c7; color: #92400e; }
-    .badge-gray { background: #e5e7eb; color: #374151; }
-    .muted { color: var(--muted); }
-    .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; background: #e0ecff; border: 1px solid #bcd3ff; color: #1e3a8a; }
-    .flash.error { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
-    form.inline { display: inline-block; margin: 0; }
-    label { display: block; font-weight: 500; margin: 10px 0 4px; }
-    input[type=text], input[type=email], input[type=number], input[type=url], select, textarea {
-      font: inherit; padding: 6px 9px; border: 1px solid #cfd5dd; border-radius: 6px; background: #fff; width: 100%; max-width: 520px; }
-    form.inline input, form.inline select { width: auto; }
-    textarea { min-height: 110px; }
-    pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-    pre { background: #f3f4f6; padding: 10px; border-radius: 6px; white-space: pre-wrap; margin: 0; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  {% include "_styles.html" %}
   {% block head %}{% endblock %}
 </head>
+{% from "_icons.html" import icon, avatar %}
+{% set path = request.url.path %}
 <body>
-  {% set path = request.url.path %}
-  <nav class="side">
-    <div class="brand">Internal Tools</div>
-    <div class="brand-sub">code-first, built with Devin</div>
+{% block body %}
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/">
+      <span class="logo">{{ icon("layers") }}</span>
+      <span><div class="t">Acme Internal</div><div class="s">Ops console</div></span>
+    </a>
     {% set pc = pending_count if pending_count is defined else (pending_approvals_count() if pending_approvals_count is defined and user else None) %}
-    {% for href, label in [("/", "Home"), ("/flags", "Flags"), ("/refunds", "Refunds"), ("/approvals", "Approvals"),
-                           ("/feedback", "Feedback"), ("/audit", "Audit"), ("/notifications", "Notifications")] %}
-      <a class="nav {% if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) %}active{% endif %}" href="{{ href }}">
-        <span>{{ label }}</span>
-        {% if href == "/approvals" and pc %}<span class="count">{{ pc }}</span>{% endif %}
-      </a>
-    {% endfor %}
-    <div class="who">
+    <div class="nav-label">Apps</div>
+    <nav class="nav">
+      <a href="/" class="{% if path == '/' %}active{% endif %}">{{ icon("home") }} Overview</a>
+      <a href="/flags" class="{% if path.startswith('/flags') %}active{% endif %}">{{ icon("flag") }} Feature flags</a>
+      <a href="/refunds" class="{% if path.startswith('/refunds') %}active{% endif %}">{{ icon("refund") }} Refunds</a>
+      <a href="/approvals" class="{% if path.startswith('/approvals') %}active{% endif %}">{{ icon("check-circle") }} Approvals {% if pc %}<span class="count">{{ pc }}</span>{% endif %}</a>
+    </nav>
+    <div class="nav-label">Platform</div>
+    <nav class="nav">
+      <a href="/feedback" class="{% if path.startswith('/feedback') %}active{% endif %}">{{ icon("chat") }} Feedback</a>
+      <a href="/audit" class="{% if path.startswith('/audit') %}active{% endif %}">{{ icon("shield") }} Audit log</a>
+      <a href="/notifications" class="{% if path.startswith('/notifications') %}active{% endif %}">{{ icon("bell") }} Notifications</a>
+    </nav>
+    <div class="side-foot">
       {% if user %}
-        <div class="name">{{ user.name }}</div>
-        <div class="muted" style="color:#94a3b8">{{ user.email }} · {{ user.role }}</div>
-        <div style="margin-top:6px"><a href="/logout">Log out</a></div>
+      <div class="me">
+        {{ avatar(user) }}
+        <div class="who"><div class="n">{{ user.name }}</div><div class="e">{{ user.role }} · {{ user.email }}</div></div>
+        <a class="out" href="/logout" title="Sign out">{{ icon("logout") }}</a>
+      </div>
       {% else %}
-        <a href="/login">Log in</a>
+      <a class="btn btn-block" href="/login">Sign in</a>
       {% endif %}
     </div>
-  </nav>
+  </aside>
   <div class="main">
+    <header class="topbar">
+      <div class="crumbs">
+        <a href="/">Acme Internal</a>
+        {% block crumbs %}{% endblock %}
+      </div>
+      <div class="grow"></div>
+      <span class="env-pill"><span class="dot"></span> prototype · SQLite</span>
+    </header>
     <div class="content">
-      {% set q_msg = request.query_params.get("msg") %}
-      {% set q_err = request.query_params.get("error") %}
-      {% if q_msg %}<div class="flash">{{ q_msg }}</div>{% endif %}
-      {% if q_err %}<div class="flash error">{{ q_err }}</div>{% endif %}
       {% block content %}{% endblock %}
     </div>
-    <footer>
-      <a href="/feedback/new?page={{ path | urlencode }}">Send feedback about this page</a> ·
-      Prototype: shared auth, RBAC, audit, approvals, events and notifications under every app.
-    </footer>
   </div>
+</div>
+{% set q_msg = request.query_params.get("msg") or request.query_params.get("notice") %}
+{% set q_err = request.query_params.get("error") %}
+{% if q_msg or q_err %}
+<div class="toasts">
+  {% if q_msg %}<div class="toast">{{ icon("check-circle") }}<span>{{ q_msg }}</span><button class="x" onclick="this.parentNode.remove()">×</button></div>{% endif %}
+  {% if q_err %}<div class="toast err">{{ icon("x-circle") }}<span>{{ q_err }}</span><button class="x" onclick="this.parentNode.remove()">×</button></div>{% endif %}
+</div>
+<script>setTimeout(function(){var t=document.querySelector('.toasts');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove()},400)}},5000)</script>
+{% endif %}
+{% if user and not path.startswith('/feedback/new') %}
+<a class="fab" href="/feedback/new?page={{ path | urlencode }}">{{ icon("chat") }} Feedback</a>
+{% endif %}
+{% endblock %}
 </body>
 </html>

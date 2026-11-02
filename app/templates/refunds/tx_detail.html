@@ -1,83 +1,90 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, empty %}
 {% block title %}Transaction #{{ tx.id }}{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/refunds">Refunds</a><span class="sep">/</span><span class="cur">Transaction #{{ tx.id }}</span>{% endblock %}
 {% block content %}
-<p style="margin:0 0 8px"><a href="/refunds">&larr; Refunds</a></p>
-<h1>Transaction #{{ tx.id }} <span class="muted" style="font-weight:400">&middot; {{ money(tx.amount_cents, tx.currency) }} at {{ tx.merchant }}</span></h1>
+<div class="ph">
+  <div><div class="title-row"><h1>{{ money(tx.amount_cents, tx.currency) }} at {{ tx.merchant }}</h1>{% if tx.refunded_cents >= tx.amount_cents %}<span class="badge badge-gray">Fully refunded</span>{% elif tx.refunded_cents %}<span class="badge badge-blue">Partially refunded</span>{% endif %}</div>
+  <p>Transaction #{{ tx.id }} · {{ tx.customer_name }} · charged {{ tx.created_at.strftime("%b %d, %Y %H:%M") }} UTC</p></div>
+  <div class="actions"><a class="btn btn-ghost" href="/refunds">{{ icon("arrow-left") }} Refunds</a></div>
+</div>
 
 {% if kyc_hint %}
-<div class="flash" style="background:#fef3c7;border-color:#fde68a;color:#92400e"><strong>{{ kyc_hint }}</strong> &mdash; review the customer's history before refunding.</div>
+<div class="alert alert-warn">{{ icon("alert") }}<div><strong>{{ kyc_hint }}</strong> &mdash; review the customer's history before refunding. <span class="muted">Signal received from the KYC app via <code>kyc.decision.v1</code>; no cross-app table reads.</span></div></div>
 {% endif %}
-{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">{{ icon("x-circle") }}<span>{{ error }}</span></div>{% endif %}
 
-<div class="grid">
-  <div class="kpi"><strong>{{ money(tx.amount_cents, tx.currency) }}</strong><span>Charged</span></div>
-  <div class="kpi"><strong>{{ money(tx.refunded_cents, tx.currency) }}</strong><span>Refunded</span></div>
-  <div class="kpi"><strong>{{ money(available, tx.currency) }}</strong><span>Available to refund{% if reserved %} ({{ money(reserved, tx.currency) }} pending){% endif %}</span></div>
-</div>
+<div class="split">
+  <div>
+    <div class="grid g3 mb">
+      <div class="stat"><div class="ic tint-slate">{{ icon("refund") }}</div><div><div class="lbl">Charged</div><div class="val">{{ money(tx.amount_cents, tx.currency) }}</div></div></div>
+      <div class="stat"><div class="ic tint-blue">{{ icon("refresh") }}</div><div><div class="lbl">Refunded</div><div class="val">{{ money(tx.refunded_cents, tx.currency) }}</div></div></div>
+      <div class="stat"><div class="ic tint-green">{{ icon("dollar") }}</div><div><div class="lbl">Available</div><div class="val">{{ money(available, tx.currency) }}</div>{% if reserved %}<div class="sub">{{ money(reserved, tx.currency) }} pending approval</div>{% endif %}</div></div>
+    </div>
 
-<div class="card">
-  <h2>Details</h2>
-  <table class="table">
-    <tr><th style="width:200px">Customer</th><td>{{ tx.customer_name }} &lt;{{ tx.customer_email }}&gt;</td></tr>
-    <tr><th>Merchant</th><td>{{ tx.merchant }}</td></tr>
-    <tr><th>Charged at</th><td>{{ tx.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</td></tr>
-    <tr><th>Currency</th><td>{{ tx.currency }}</td></tr>
-    <tr><th>Processor charge</th><td><code>{{ tx.processor_charge_id }}</code></td></tr>
-  </table>
-</div>
+    <div class="card">
+      <div class="card-h"><div><h2>Charge details</h2></div></div>
+      <div class="card-b" style="padding:6px 18px">
+        <table class="kv">
+          <tr><th>Customer</th><td>{{ tx.customer_name }} <span class="muted">&lt;{{ tx.customer_email }}&gt;</span></td></tr>
+          <tr><th>Merchant</th><td>{{ tx.merchant }}</td></tr>
+          <tr><th>Charged at</th><td>{{ tx.created_at.strftime("%b %d, %Y %H:%M") }} UTC</td></tr>
+          <tr><th>Currency</th><td>{{ tx.currency }}</td></tr>
+          <tr><th>Processor charge</th><td><code>{{ tx.processor_charge_id }}</code></td></tr>
+        </table>
+      </div>
+    </div>
 
-{% if "refunds.request" in perms %}
-<div class="card">
-  <h2>Request a refund</h2>
-  {% if available > 0 %}
-  <p class="muted" style="margin-top:0">
-    Under {{ money(approve_threshold) }} executes immediately &middot;
-    {{ money(approve_threshold) }}&ndash;{{ money(large_threshold - 1) }} needs an approver &middot;
-    {{ money(large_threshold) }}+ needs a senior approver. You cannot approve your own request.
-  </p>
-  <form method="post" action="/refunds/requests">
-    <input type="hidden" name="transaction_id" value="{{ tx.id }}">
-    <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
-    <label for="amount">Amount (USD)</label>
-    <input type="text" id="amount" name="amount" inputmode="decimal" required
-           value="{{ form.get('amount') or '%.2f' | format(available / 100) }}" style="max-width:200px">
-    <label for="reason_code">Reason</label>
-    <select id="reason_code" name="reason_code" required style="max-width:240px">
-      {% for code in reason_codes %}
-        <option value="{{ code }}" {% if form.get('reason_code') == code %}selected{% endif %}>{{ code | replace("_", " ") | capitalize }}</option>
-      {% endfor %}
-    </select>
-    <label for="note">Note</label>
-    <textarea id="note" name="note" placeholder="Context for the approver (optional)">{{ form.get('note', '') }}</textarea>
-    <div style="margin-top:12px"><button class="btn btn-primary" type="submit">Submit refund</button></div>
-  </form>
-  {% else %}
-  <p class="muted" style="margin:0">Nothing left to refund on this transaction.</p>
-  {% endif %}
-</div>
-{% endif %}
+    <div class="card flush">
+      <div class="card-h"><div><h2>Refund history</h2></div></div>
+      <div class="card-b">
+      {% if refunds %}
+      <table class="table">
+        <thead><tr><th>#</th><th>Requested</th><th>Reason</th><th class="right">Amount</th><th>Status</th><th>By</th><th>Processor refund</th></tr></thead>
+        <tbody>
+        {% for rr in refunds %}
+          <tr>
+            <td><a href="/refunds/requests/{{ rr.id }}">#{{ rr.id }}</a></td>
+            <td class="muted small nowrap">{{ rr.created_at.strftime("%b %d, %H:%M") }}</td>
+            <td>{{ rr.reason_code | replace("_", " ") | capitalize }}</td>
+            <td class="right mono">{{ money(rr.amount_cents, tx.currency) }}</td>
+            <td><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></td>
+            <td class="muted small">{{ rr.requested_by_email.split("@")[0] }}</td>
+            <td>{% if rr.processor_refund_id %}<code>{{ rr.processor_refund_id }}</code>{% else %}<span class="faint">&mdash;</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}{{ empty("No refunds on this charge", "Use the form to request one.", "refund") }}{% endif %}
+      </div>
+    </div>
+  </div>
 
-<div class="card">
-  <h2>Refund history</h2>
-  {% if refunds %}
-  <table class="table">
-    <thead><tr><th>#</th><th>Requested</th><th>Reason</th><th style="text-align:right">Amount</th><th>Status</th><th>Requested by</th><th>Processor refund</th></tr></thead>
-    <tbody>
-    {% for rr in refunds %}
-      <tr>
-        <td><a href="/refunds/requests/{{ rr.id }}">#{{ rr.id }}</a></td>
-        <td class="muted">{{ rr.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{{ rr.reason_code | replace("_", " ") }}</td>
-        <td style="text-align:right">{{ money(rr.amount_cents, tx.currency) }}</td>
-        <td><span class="badge {{ status_badges.get(rr.status, 'badge-gray') }}">{{ rr.status | replace("_", " ") }}</span></td>
-        <td class="muted">{{ rr.requested_by_email }}</td>
-        <td>{% if rr.processor_refund_id %}<code>{{ rr.processor_refund_id }}</code>{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted" style="margin:0">No refunds on this transaction.</p>
+  {% if "refunds.request" in perms %}
+  <div class="card">
+    <div class="card-h"><div><h2>Request a refund</h2><p>{% if available > 0 %}Up to {{ money(available, tx.currency) }}{% else %}Nothing left to refund{% endif %}</p></div></div>
+    <div class="card-b">
+    {% if available > 0 %}
+    <form method="post" action="/refunds/requests">
+      <input type="hidden" name="transaction_id" value="{{ tx.id }}">
+      <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+      <div class="field"><label for="amount">Amount (USD)</label><input type="text" id="amount" name="amount" inputmode="decimal" required class="mono" value="{{ form.get('amount') or '%.2f' | format(available / 100) }}"></div>
+      <div class="field"><label for="reason_code">Reason</label>
+        <select id="reason_code" name="reason_code" required>{% for code in reason_codes %}<option value="{{ code }}" {% if form.get('reason_code') == code %}selected{% endif %}>{{ code | replace("_", " ") | capitalize }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="note">Note for the approver</label><textarea id="note" name="note" style="min-height:80px" placeholder="Optional context">{{ form.get('note', '') }}</textarea></div>
+      <button class="btn btn-primary btn-block" type="submit">{{ icon("check") }} Submit refund</button>
+      <div class="hint" style="margin-top:14px;display:grid;gap:4px">
+        <div><span class="badge badge-green plain">&lt; {{ money(approve_threshold) }}</span> executes immediately</div>
+        <div><span class="badge badge-amber plain">{{ money(approve_threshold) }}&ndash;{{ money(large_threshold - 1) }}</span> needs an approver</div>
+        <div><span class="badge badge-red plain">{{ money(large_threshold) }}+</span> needs an admin</div>
+        <div class="faint">You can't approve your own request. Submissions are idempotent, so a double-click never refunds twice.</div>
+      </div>
+    </form>
+    {% else %}
+    {{ empty("Fully refunded", "This charge has no refundable balance left.", "check-circle") }}
+    {% endif %}
+    </div>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

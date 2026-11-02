@@ -1,24 +1,22 @@
 {% extends "base.html" %}
-{% block title %}New feedback{% endblock %}
+{% from "_icons.html" import icon %}
+{% block title %}Send feedback{% endblock %}
+{% block crumbs %}<span class="sep">/</span><a href="/feedback">Feedback</a><span class="sep">/</span><span class="cur">New</span>{% endblock %}
 {% block content %}
-<h1>Send feedback</h1>
-<div class="card">
+<div class="ph"><div><h1>Report friction</h1><p>Something slow, confusing or one click too many? Say it here. Small things are welcome; they're the changes that never used to get a ticket.</p></div></div>
+<div class="card" style="max-width:680px"><div class="card-b">
   <form method="post" action="/feedback">
-    <label for="page_path">Page</label>
-    <input type="text" id="page_path" name="page_path" value="{{ page }}" placeholder="/refunds">
-    <label for="kind">Kind</label>
-    <select id="kind" name="kind">
-      {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
-    </select>
-    <label for="title">Title</label>
-    <input type="text" id="title" name="title" required maxlength="300" placeholder="What's getting in your way?">
-    <label for="body">Description</label>
-    <textarea id="body" name="body" placeholder="What were you trying to do, and what happened instead?"></textarea>
-    <div style="margin-top:14px">
-      <button class="btn btn-primary" type="submit">Submit</button>
-      <a class="btn btn-secondary" href="{{ page or '/feedback' }}">Cancel</a>
+    <div class="field"><span class="label">What kind of feedback?</span>
+      <div class="radio-cards">
+        {% for k in kinds %}<label><input type="radio" name="kind" value="{{ k }}" {% if loop.first %}checked{% endif %}> {{ {'bug':'Bug','friction':'Friction','idea':'Idea'}.get(k, k | capitalize) }}</label>{% endfor %}
+      </div></div>
+    <div class="field"><label for="title">Title</label><input type="text" id="title" name="title" required maxlength="300" placeholder="What's getting in your way?" autofocus></div>
+    <div class="field"><label for="body">Details</label><textarea id="body" name="body" placeholder="What were you trying to do, and what happened instead?"></textarea></div>
+    <div class="field"><label for="page_path">Page</label><input type="text" id="page_path" name="page_path" value="{{ page }}" placeholder="/refunds" class="mono"><div class="hint">Pre-filled from where you clicked Feedback.</div></div>
+    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:6px">
+      <span class="small muted">Submitting as {{ user.name }} ({{ user.role }})</span>
+      <span style="display:flex;gap:8px"><a class="btn" href="{{ page or '/feedback' }}">Cancel</a><button class="btn btn-primary" type="submit">{{ icon("check") }} Submit</button></span>
     </div>
   </form>
-</div>
-<p class="muted">Submitted as {{ user.email }} ({{ user.role }}).</p>
+</div></div>
 {% endblock %}

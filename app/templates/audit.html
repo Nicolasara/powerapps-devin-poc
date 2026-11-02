@@ -1,36 +1,44 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, empty %}
 {% block title %}Audit log{% endblock %}
+{% block crumbs %}<span class="sep">/</span><span class="cur">Audit log</span>{% endblock %}
 {% block content %}
-<h1>Audit log</h1>
-<p class="muted">Append-only. Latest 200 events{% if entity_type %} for <code>{{ entity_type }}</code>{% endif %}.</p>
-<div class="card">
-  <form class="inline" method="get" action="/audit">
-    <label for="entity_type" style="display:inline;margin-right:6px">Entity type</label>
-    <select id="entity_type" name="entity_type">
-      <option value="">All</option>
-      {% for et in entity_types %}<option value="{{ et }}" {% if et == entity_type %}selected{% endif %}>{{ et }}</option>{% endfor %}
-    </select>
-    <button class="btn btn-secondary" type="submit">Filter</button>
-  </form>
-</div>
-<div class="card" style="padding:0">
+<div class="ph"><div><h1>Audit log</h1><p>Append-only record of every change, with who, what, before and after. Latest 200 events{% if entity_type %} for <code>{{ entity_type }}</code>{% endif %}.</p></div></div>
+<div class="card flush">
+  <div class="toolbar">
+    <div class="seg">
+      <a href="/audit" class="{{ 'on' if not entity_type }}">All</a>
+      {% for et in entity_types %}<a href="/audit?entity_type={{ et }}" class="{{ 'on' if et == entity_type }}">{{ et }}</a>{% endfor %}
+    </div>
+    <span class="small muted">{{ rows | length }} events</span>
+  </div>
+  <div class="card-b">
+  {% if rows %}
   <table class="table">
-    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Before</th><th>After</th><th>Reason</th></tr></thead>
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Change</th><th>Reason</th></tr></thead>
     <tbody>
     {% for e in rows %}
       <tr>
-        <td class="muted" style="white-space:nowrap">{{ e.at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-        <td>{{ e.actor_email }}</td>
-        <td><code>{{ e.action }}</code></td>
-        <td>{{ e.entity_type }} {{ e.entity_id }}</td>
-        <td>{% if e.before %}<pre>{{ e.before | tojson }}</pre>{% endif %}</td>
-        <td>{% if e.after %}<pre>{{ e.after | tojson }}</pre>{% endif %}</td>
-        <td class="muted">{{ e.reason or "" }}</td>
+        <td class="muted small nowrap">{{ e.at.strftime("%b %d, %H:%M:%S") }}</td>
+        <td>{{ (e.actor_email or "system").split("@")[0] }}</td>
+        <td><span class="tag">{{ e.action }}</span></td>
+        <td class="nowrap">{{ e.entity_type }} <span class="muted">#{{ e.entity_id }}</span></td>
+        <td>
+          {% if e.before or e.after %}
+          <div class="diff" style="margin:0">
+            {% for k in ((e.after or {}).keys() | list) + ((e.before or {}).keys() | reject("in", (e.after or {}).keys()) | list) %}
+              {% set b = (e.before or {}).get(k) %}{% set a = (e.after or {}).get(k) %}
+              {% if b != a %}<span class="chg">{{ k }}: {% if b is not none %}<span class="old">{{ b }}</span> → {% endif %}<span class="new">{{ a }}</span></span>{% endif %}
+            {% endfor %}
+          </div>
+          {% else %}<span class="faint">—</span>{% endif %}
+        </td>
+        <td class="muted small">{{ e.reason or "" }}</td>
       </tr>
-    {% else %}
-      <tr><td colspan="7" class="muted">No events.</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  {% else %}{{ empty("No events", "Changes will show up here as they happen.", "shield") }}{% endif %}
+  </div>
 </div>
 {% endblock %}
