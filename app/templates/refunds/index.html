@@ -24,7 +24,7 @@
       {% if view == 'requests' %}<input type="hidden" name="view" value="requests">{% endif %}
       <div class="input-icon">{{ icon("search") }}<input type="search" name="q" value="{{ q }}" placeholder="Search customer name or email" style="width:300px"></div>
       <button class="btn" type="submit">Search</button>
-      {% if q %}<a class="btn btn-ghost" href="{{ view_url(view) | replace('?q=', '?') }}">Clear</a>{% endif %}
+      {% if q %}<a class="btn btn-ghost" href="{{ view_url(view, '') }}">Clear</a>{% endif %}
     </form>
   </div>
   <div class="card-b">
