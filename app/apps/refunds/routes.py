@@ -12,6 +12,7 @@ from app.platform import events
 from app.platform.auth import require
 from app.platform.db import get_db
 from app.platform.models import Approval, AuditEvent, User, utcnow
+from app.platform.tables import page_url_factory, resolve_sort, sort_url_factory
 from app.web import render
 
 from . import service
@@ -51,7 +52,8 @@ def _get_tx(db: Session, tx_id: int) -> Transaction:
 
 
 @router.get("")
-def index(request: Request, db: Db, user: Reader, q: str = "", page: int = 1):
+def index(request: Request, db: Db, user: Reader, q: str = "", page: int = 1, view: str = "transactions",
+          sort: str = "", dir: str = ""):
     service.sync_rejections(db)
     start_of_day = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     refunded_today = db.scalar(
@@ -63,24 +65,38 @@ def index(request: Request, db: Db, user: Reader, q: str = "", page: int = 1):
     failed = db.scalar(select(func.count()).select_from(RefundRequest).where(RefundRequest.status == "failed"))
 
     q = q.strip()
-    stmt = select(Transaction)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(or_(Transaction.customer_email.ilike(like), Transaction.customer_name.ilike(like)))
+    view = view if view in ("transactions", "requests") else "transactions"
+    like = f"%{q}%"
+    if view == "requests":
+        stmt = select(RefundRequest).join(Transaction)
+        if q:
+            stmt = stmt.where(or_(Transaction.customer_email.ilike(like), Transaction.customer_name.ilike(like)))
+        allowed = {"requested": (RefundRequest.created_at,), "amount": (RefundRequest.amount_cents,),
+                   "status": (RefundRequest.status,), "reason": (RefundRequest.reason_code,),
+                   "by": (RefundRequest.requested_by_email,)}
+        sort, dir, order = resolve_sort(sort, dir, allowed, "requested", "desc")
+        tiebreak = RefundRequest.id.desc()
+    else:
+        stmt = select(Transaction)
+        if q:
+            stmt = stmt.where(or_(Transaction.customer_email.ilike(like), Transaction.customer_name.ilike(like)))
+        allowed = {"date": (Transaction.created_at,), "customer": (Transaction.customer_name,),
+                   "merchant": (Transaction.merchant,), "amount": (Transaction.amount_cents,)}
+        sort, dir, order = resolve_sort(sort, dir, allowed, "date", "desc")
+        tiebreak = Transaction.id.desc()
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(max(1, page), pages)
-    txs = db.scalars(
-        stmt.order_by(Transaction.created_at.desc(), Transaction.id.desc()).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
-    ).all()
-    recent = db.scalars(select(RefundRequest).order_by(RefundRequest.id.desc()).limit(8)).all()
-
-    def page_url(n: int) -> str:
-        return "/refunds?" + urlencode({k: v for k, v in {"q": q, "page": n}.items() if v})
-
+    rows = db.scalars(stmt.order_by(*order, tiebreak).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
+    params = {"view": view if view != "transactions" else None, "q": q, "sort": sort, "dir": dir}
     return render(request, "refunds/index.html", user, **_ctx(
-        refunded_today=refunded_today, pending=pending, failed=failed, q=q, txs=txs, total=total,
-        page=page, pages=pages, page_url=page_url, recent=recent,
+        refunded_today=refunded_today, pending=pending, failed=failed, q=q, view=view, total=total,
+        txs=rows if view == "transactions" else [], requests=rows if view == "requests" else [],
+        page=page, pages=pages, page_url=page_url_factory("/refunds", params),
+        sort=sort, dir=dir, sort_url=sort_url_factory("/refunds", params, sort, dir),
+        view_url=lambda v, search=q: "/refunds?" + urlencode(
+            {k: x for k, x in {"view": v if v != "transactions" else None, "q": search}.items() if x}),
+        approve_threshold=service.APPROVE_THRESHOLD_CENTS, large_threshold=service.LARGE_THRESHOLD_CENTS,
     ))
 
 
@@ -90,6 +106,7 @@ def _tx_page(request: Request, db: Session, user: User, tx: Transaction, error: 
     resp = render(request, "refunds/tx_detail.html", user, **_ctx(
         tx=tx, refunds=tx.refunds, available=service.available_cents(db, tx),
         reserved=service.reserved_cents(db, tx), kyc_hint=service.kyc_hint(db, tx.customer_email),
+        kyc_link=service.kyc_case_link(db, tx.customer_email),
         reason_codes=REASON_CODES, idempotency_key=(form or {}).get("idempotency_key") or str(uuid.uuid4()),
         form=form or {}, error=error, approve_threshold=service.APPROVE_THRESHOLD_CENTS,
         large_threshold=service.LARGE_THRESHOLD_CENTS,

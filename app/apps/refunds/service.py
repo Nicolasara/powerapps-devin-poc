@@ -189,17 +189,30 @@ def on_kyc_decision(db: Session, payload: dict) -> None:
         risk_band=str(payload.get("risk_band", "unknown")),
         outcome=str(payload.get("outcome", "unknown")),
         reviewed_manually=bool(payload.get("reviewed_manually", False)),
+        case_id=int(payload["case_id"]) if payload.get("case_id") is not None else None,
         at=_parse_at(payload.get("at")),
     ))
 
 
-def kyc_hint(db: Session, customer_email: str) -> str | None:
-    signal = db.scalars(
+def kyc_case_link(db: Session, customer_email: str) -> str | None:
+    """Where to review the KYC decision the banner talks about (same signal as kyc_hint)."""
+    signal = _kyc_signal(db, customer_email)
+    if signal is None:
+        return None
+    return f"/kyc/{signal.case_id}" if signal.case_id else f"/kyc?status=all&q={customer_email}"
+
+
+def _kyc_signal(db: Session, customer_email: str) -> KycSignal | None:
+    return db.scalars(
         select(KycSignal).where(
             KycSignal.customer_email == customer_email.lower(),
             (KycSignal.reviewed_manually.is_(True)) | (KycSignal.risk_band == "high"),
-        ).order_by(KycSignal.at.desc())
+        ).order_by(KycSignal.at.desc(), KycSignal.id.desc())
     ).first()
+
+
+def kyc_hint(db: Session, customer_email: str) -> str | None:
+    signal = _kyc_signal(db, customer_email)
     if signal is None:
         return None
     day = signal.at.strftime("%Y-%m-%d")

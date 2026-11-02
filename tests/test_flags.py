@@ -160,3 +160,95 @@ def test_snapshot_etag_and_304(anon, login, db, flags):
 
 def test_snapshot_rejects_unknown_environment(anon):
     assert anon.get("/flags/api/snapshot", params={"environment": "qa"}).status_code == 400
+
+
+def test_promote_dev_to_staging_applies_immediately(login, db, flags):
+    oscar = login("oscar")
+    resp = oscar.post("/flags/promote", data={"key": "instant_transfers", "to_env": "staging"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "promoted to staging" in _query(resp)["notice"][0]
+    staging = db.scalar(select(Flag).where(Flag.key == "instant_transfers", Flag.environment == "staging"))
+    assert staging is not None
+    assert staging.state() == _flag(db, flags["dev"]).state()
+
+
+def test_promote_to_prod_requires_approval(login, db, flags):
+    oscar = login("oscar")
+    oscar.post("/flags/promote", data={"key": "instant_transfers", "to_env": "staging"}, follow_redirects=False)
+    staging = db.scalar(select(Flag).where(Flag.key == "instant_transfers", Flag.environment == "staging"))
+    oscar.post(f"/flags/{staging.id}/toggle", follow_redirects=False)  # staging ON, 100%
+
+    resp = oscar.post("/flags/promote", data={"key": "instant_transfers", "to_env": "prod"}, follow_redirects=False)
+    assert "approval" in _query(resp)["notice"][0]
+    prod = _flag(db, flags["prod"])
+    assert prod.enabled is False and prod.rollout_percent == 25
+
+    approval = _pending(db, flags["prod"])[0]
+    assert approval.payload == {"enabled": True, "rollout_percent": 100}
+    login("april").post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
+    prod = _flag(db, flags["prod"])
+    assert prod.enabled is True and prod.rollout_percent == 100
+
+
+def test_new_flag_exists_only_in_dev_until_promoted(login, db):
+    oscar = login("oscar")
+    resp = oscar.post("/flags", data={"key": "new_thing", "description": "x", "owner_team": "t", "enabled": "true",
+                                      "rollout_percent": "50"}, follow_redirects=False)
+    assert resp.status_code == 303
+    rows = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == "new_thing"))}
+    assert set(rows) == {"dev"}
+    assert rows["dev"].state() == {"enabled": True, "rollout_percent": 50}
+    anon_snapshot = oscar.get("/flags/api/snapshot", params={"environment": "prod"}).json()["flags"]
+    assert "new_thing" not in anon_snapshot
+
+
+def test_promote_to_missing_prod_row_waits_for_approval(login, db):
+    oscar = login("oscar")
+    oscar.post("/flags", data={"key": "lazy", "enabled": "true", "rollout_percent": "100"}, follow_redirects=False)
+    oscar.post("/flags/promote", data={"key": "lazy", "to_env": "staging"}, follow_redirects=False)
+    resp = oscar.post("/flags/promote", data={"key": "lazy", "to_env": "prod"}, follow_redirects=False)
+    assert "approval" in _query(resp)["notice"][0]
+    assert db.scalar(select(Flag).where(Flag.key == "lazy", Flag.environment == "prod")) is None
+    assert "lazy" not in oscar.get("/flags/api/snapshot", params={"environment": "prod"}).json()["flags"]
+    approval = db.scalar(select(Approval).where(Approval.entity_id == "new:lazy:prod", Approval.status == "pending"))
+    login("april").post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
+    prod = db.scalar(select(Flag).where(Flag.key == "lazy", Flag.environment == "prod"))
+    assert prod is not None and prod.state() == {"enabled": True, "rollout_percent": 100}
+
+
+def test_switching_on_a_dark_flag_goes_live_at_100(login, db):
+    dark = Flag(key="dark", environment="dev", enabled=False, rollout_percent=0)
+    db.add(dark)
+    db.commit()
+    login("oscar").post(f"/flags/{dark.id}/toggle", follow_redirects=False)
+    assert _flag(db, dark.id).state() == {"enabled": True, "rollout_percent": 100}
+
+
+def test_zero_rollout_turns_flag_off(login, db, flags):
+    login("oscar").post(f"/flags/{flags['dev']}/toggle", follow_redirects=False)  # ON at 100%
+    login("oscar").post(f"/flags/{flags['dev']}/rollout", data={"rollout_percent": "0"}, follow_redirects=False)
+    assert _flag(db, flags["dev"]).state() == {"enabled": False, "rollout_percent": 0}
+
+
+def test_switch_on_enabled_zero_rollout_flag_goes_live(login, db):
+    odd = Flag(key="odd", environment="dev", enabled=True, rollout_percent=0)  # displays as Off
+    db.add(odd)
+    db.commit()
+    login("oscar").post(f"/flags/{odd.id}/toggle", follow_redirects=False)
+    assert _flag(db, odd.id).state() == {"enabled": True, "rollout_percent": 100}
+
+
+def test_rollout_form_can_relive_a_disabled_flag_at_its_old_percentage(login, db):
+    f = Flag(key="paused", environment="dev", enabled=False, rollout_percent=25)
+    db.add(f)
+    db.commit()
+    resp = login("oscar").post(f"/flags/{f.id}/rollout", data={"rollout_percent": "25"}, follow_redirects=False)
+    assert "already" not in _query(resp)["notice"][0]
+    assert _flag(db, f.id).state() == {"enabled": True, "rollout_percent": 25}
+
+
+def test_filtered_list_still_shows_pending_prod_changes(login, db, flags):
+    oscar = login("oscar")
+    oscar.post(f"/flags/{flags['prod']}/toggle", follow_redirects=False)  # pending approval in prod
+    page = oscar.get("/flags?environment=dev")
+    assert "Pending" in page.text

@@ -1,36 +1,54 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, empty %}
 {% block title %}Audit log{% endblock %}
+{% block crumbs %}<span class="sep">/</span><span class="cur">Audit log</span>{% endblock %}
 {% block content %}
-<h1>Audit log</h1>
-<p class="muted">Append-only. Latest 200 events{% if entity_type %} for <code>{{ entity_type }}</code>{% endif %}.</p>
-<div class="card">
-  <form class="inline" method="get" action="/audit">
-    <label for="entity_type" style="display:inline;margin-right:6px">Entity type</label>
-    <select id="entity_type" name="entity_type">
-      <option value="">All</option>
-      {% for et in entity_types %}<option value="{{ et }}" {% if et == entity_type %}selected{% endif %}>{{ et }}</option>{% endfor %}
-    </select>
-    <button class="btn btn-secondary" type="submit">Filter</button>
-  </form>
-</div>
-<div class="card" style="padding:0">
+<div class="ph"><div><h1>Audit log</h1><p>Append-only record of every change, with who, what, before and after{% if entity_type %}, filtered to <code>{{ entity_type }}</code>{% endif %}.</p></div></div>
+<div class="card flush">
+  <div class="toolbar">
+    <div class="seg">
+      <a href="/audit" class="{{ 'on' if not entity_type }}">All</a>
+      {% for et in entity_types %}<a href="/audit?entity_type={{ et }}" class="{{ 'on' if et == entity_type }}">{{ et }}</a>{% endfor %}
+    </div>
+    <span class="small muted">{{ total }} event{{ '' if total == 1 else 's' }}{% if pages > 1 %} · page {{ page }} of {{ pages }}{% endif %}</span>
+  </div>
+  <div class="card-b">
+  {% if rows %}
   <table class="table">
-    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Before</th><th>After</th><th>Reason</th></tr></thead>
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Change</th><th>Reason</th></tr></thead>
     <tbody>
     {% for e in rows %}
       <tr>
-        <td class="muted" style="white-space:nowrap">{{ e.at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-        <td>{{ e.actor_email }}</td>
-        <td><code>{{ e.action }}</code></td>
-        <td>{{ e.entity_type }} {{ e.entity_id }}</td>
-        <td>{% if e.before %}<pre>{{ e.before | tojson }}</pre>{% endif %}</td>
-        <td>{% if e.after %}<pre>{{ e.after | tojson }}</pre>{% endif %}</td>
-        <td class="muted">{{ e.reason or "" }}</td>
+        <td class="muted small nowrap">{{ e.at.strftime("%b %d, %H:%M:%S") }}</td>
+        <td>{{ (e.actor_email or "system").split("@")[0] }}</td>
+        <td><span class="tag">{{ e.action }}</span></td>
+        <td class="nowrap">{{ e.entity_type }} <span class="muted">#{{ e.entity_id }}</span></td>
+        <td>
+          {% if e.before or e.after %}
+          <div class="diff" style="margin:0">
+            {% for k in ((e.after or {}).keys() | list) + ((e.before or {}).keys() | reject("in", (e.after or {}).keys()) | list) %}
+              {% set b = (e.before or {}).get(k) %}{% set a = (e.after or {}).get(k) %}
+              {% if b != a %}<span class="chg">{{ k }}: {% if b is not none %}<span class="old">{{ b }}</span> → {% endif %}<span class="new">{{ a }}</span></span>{% endif %}
+            {% endfor %}
+          </div>
+          {% else %}<span class="faint">—</span>{% endif %}
+        </td>
+        <td class="muted small">{{ e.reason or "" }}</td>
       </tr>
-    {% else %}
-      <tr><td colspan="7" class="muted">No events.</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  {% if pages > 1 %}
+  <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:none">
+    <span class="small muted">Showing {{ (page - 1) * page_size + 1 }}–{{ (page - 1) * page_size + rows | length }} of {{ total }}</span>
+    <span style="display:flex;gap:6px;align-items:center">
+      {% if page > 1 %}<a class="btn btn-sm" href="{{ page_url(page - 1) }}">{{ icon("arrow-left") }} Newer</a>{% endif %}
+      {% for n in range(1, pages + 1) %}{% if n == 1 or n == pages or (n - page) | abs <= 2 %}<a class="btn btn-sm {{ 'btn-primary' if n == page }}" href="{{ page_url(n) }}">{{ n }}</a>{% elif (n - page) | abs == 3 %}<span class="faint">…</span>{% endif %}{% endfor %}
+      {% if page < pages %}<a class="btn btn-sm" href="{{ page_url(page + 1) }}">Older {{ icon("arrow-right") }}</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+  {% else %}{{ empty("No events", "Changes will show up here as they happen.", "shield") }}{% endif %}
+  </div>
 </div>
 {% endblock %}

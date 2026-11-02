@@ -1,6 +1,6 @@
 """App shell: login, home, cross-app approvals inbox, audit log, notifications. Apps plug in as routers."""
 from contextlib import asynccontextmanager
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.exception_handlers import http_exception_handler
@@ -10,12 +10,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.apps import feedback, flags, refunds
+from app.apps import feedback, flags, kyc, refunds
 from app.apps.feedback import models as feedback_models
 from app.apps.feedback.routes import router as feedback_router
 from app.apps.flags import models as flags_models
 from app.apps.flags.routes import router as flags_router
+from app.apps.kyc import models as kyc_models
+from app.apps.kyc.routes import router as kyc_router
 from app.apps.refunds import models as refunds_models
+from app.apps.refunds import service as refunds_service
 from app.apps.refunds.routes import router as refunds_router
 from app.platform import events, rbac
 from app.platform.approvals import ApprovalError, decide
@@ -27,11 +30,11 @@ from app.platform.auth import (
     set_session,
 )
 from app.platform.db import Base, SessionLocal, engine, get_db
-from app.platform.models import Approval, AuditEvent, Notification, User
+from app.platform.models import Approval, AuditEvent, Notification, User, utcnow
 from app.web import render, templates
 
 # Every app's models must be imported so Base.metadata knows all tables before create_all().
-MODEL_MODULES = (flags_models, refunds_models, feedback_models)
+MODEL_MODULES = (flags_models, refunds_models, feedback_models, kyc_models)
 _registered = False
 
 
@@ -42,12 +45,30 @@ def register_apps() -> None:
         return
     flags.register()
     refunds.register()
+    kyc.register()
     feedback.register()
     _registered = True
 
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns(bind=None) -> None:
+    """Additive, idempotent schema catch-up for databases created before a column existed (SQLite dev/demo DBs).
+    A real deployment would use Alembic; this keeps `create_all` from silently leaving tables behind."""
+    from sqlalchemy import inspect, text
+    bind = bind or engine
+    insp = inspect(bind)
+    with bind.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in have and col.nullable:
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(bind.dialect)}'))
 
 
 @asynccontextmanager
@@ -61,6 +82,7 @@ app = FastAPI(title="Internal Tools (Power Apps replacement POC)", lifespan=life
 register_apps()  # also at import so TestClient without the lifespan context still works
 app.include_router(flags_router)
 app.include_router(refunds_router)
+app.include_router(kyc_router)
 app.include_router(feedback_router)
 
 
@@ -130,9 +152,31 @@ def logout():
 
 @app.get("/")
 def home(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    pending = db.scalar(select(func.count()).select_from(Approval).where(Approval.status == "pending")) or 0
-    audit_count = db.scalar(select(func.count()).select_from(AuditEvent)) or 0
-    return render(request, "home.html", user, pending=pending, audit_count=audit_count)
+    """Dashboard: shell-level summary of every app (the shell may read app tables; apps may not read each other's)."""
+    Flag, RefundRequest, FeedbackTicket = flags_models.Flag, refunds_models.RefundRequest, feedback_models.FeedbackTicket
+    KycCase = kyc_models.KycCase
+    refunds_service.sync_rejections(db)
+
+    def count(stmt) -> int:
+        return db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    start_of_day = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    refunded_today = db.scalar(
+        select(func.coalesce(func.sum(RefundRequest.amount_cents), 0)).where(
+            RefundRequest.status == "executed", RefundRequest.executed_at >= start_of_day
+        )
+    ) or 0
+    recent = db.scalars(select(AuditEvent).order_by(AuditEvent.id.desc()).limit(10)).all()
+    return render(
+        request, "home.html", user, now=utcnow(), recent=recent,
+        pending=count(select(Approval).where(Approval.status == "pending")),
+        flag_count=count(select(Flag)), flags_on=count(select(Flag).where(Flag.enabled.is_(True), Flag.rollout_percent > 0)),
+        refunded_today=refunds_service.fmt_money(refunded_today),
+        refund_pending=count(select(RefundRequest).where(RefundRequest.status == "pending_approval")),
+        open_feedback=count(select(FeedbackTicket).where(FeedbackTicket.status == "open")),
+        kyc_pending=count(select(KycCase).where(KycCase.status == "pending")),
+        kyc_high=count(select(KycCase).where(KycCase.status == "pending", KycCase.risk_band == "high")),
+    )
 
 
 # ---------------------------------------------------------------- approvals inbox (shared across apps)
@@ -177,15 +221,29 @@ def decide_approval(approval_id: int, decision: str = Form(...), reason: str = F
 
 # ---------------------------------------------------------------- audit log
 
+AUDIT_PAGE_SIZE = 50
+
+
 @app.get("/audit")
-def audit_log(request: Request, entity_type: str = "", user: User = Depends(require("audit.read")),
+@app.get("/audit")
+def audit_log(request: Request, entity_type: str = "", page: int = 1, user: User = Depends(require("audit.read")),
               db: Session = Depends(get_db)):
-    stmt = select(AuditEvent).order_by(AuditEvent.id.desc()).limit(200)
+    base = select(AuditEvent)
     if entity_type:
-        stmt = stmt.where(AuditEvent.entity_type == entity_type)
-    rows = db.scalars(stmt).all()
+        base = base.where(AuditEvent.entity_type == entity_type)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    pages = max(1, (total + AUDIT_PAGE_SIZE - 1) // AUDIT_PAGE_SIZE)
+    page = min(max(1, page), pages)
+    rows = db.scalars(
+        base.order_by(AuditEvent.id.desc()).offset((page - 1) * AUDIT_PAGE_SIZE).limit(AUDIT_PAGE_SIZE)
+    ).all()
     entity_types = db.scalars(select(AuditEvent.entity_type).distinct().order_by(AuditEvent.entity_type)).all()
-    return render(request, "audit.html", user, rows=rows, entity_type=entity_type, entity_types=entity_types)
+
+    def page_url(n: int) -> str:
+        return "/audit?" + urlencode({k: v for k, v in {"entity_type": entity_type, "page": n}.items() if v})
+
+    return render(request, "audit.html", user, rows=rows, entity_type=entity_type, entity_types=entity_types,
+                  page=page, pages=pages, total=total, page_url=page_url, page_size=AUDIT_PAGE_SIZE)
 
 
 # ---------------------------------------------------------------- notifications (fake Teams/Slack sink)

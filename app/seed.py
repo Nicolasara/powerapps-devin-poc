@@ -7,15 +7,16 @@ import sys
 
 from sqlalchemy import select
 
-from app.apps import feedback, flags, refunds
+from app.apps import feedback, flags, kyc, refunds
 from app.apps.feedback import models as feedback_models
 from app.apps.flags import models as flags_models
+from app.apps.kyc import models as kyc_models
 from app.apps.refunds import models as refunds_models
 from app.platform.db import Base, SessionLocal, engine
 from app.platform.models import User
 
 # Every app's models must be imported so Base.metadata knows all tables.
-MODEL_MODULES = (flags_models, refunds_models, feedback_models)
+MODEL_MODULES = (flags_models, refunds_models, feedback_models, kyc_models)
 
 USERS = [
     ("alice@corp.test", "Alice Viewer", "viewer"),
@@ -44,6 +45,7 @@ def run(reset: bool = False) -> None:
     try:
         seed_users(db)
         flags.seed(db)
+        kyc.seed(db)
         refunds.seed(db)
         feedback.seed(db)
     finally:

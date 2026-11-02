@@ -27,8 +27,11 @@ Apps don't reimplement the controls a regulated business needs. They share one f
 Each app lives in `app/apps/<name>/`, with its own models, routes and templates. Apps never read each other's
 tables. They communicate through events.
 
-- **Feature flags** (`/flags`): per-environment flags (dev, staging, prod). Non-prod changes apply immediately.
-  Prod changes go through approval by someone holding `flags.approve`. Every change is audited, emits
+- **Feature flags** (`/flags`): one row per flag with dev → staging → prod columns and a **rollout plan** per key
+  (default `dev 100 → staging 100 → prod 10 → prod 50 → prod 100`, editable on the flag page). **Roll forward**
+  takes the next step; **roll back** steps down and applies immediately everywhere, prod included, because reducing
+  exposure is the safe direction. Stage toggles and rollout overrides remain on the flag page. Non-prod changes apply
+  immediately; prod steps and changes go through approval by someone holding `flags.approve`. Every change is audited, emits
   `flag.changed.v1` and posts a notification. Service SDKs poll `GET /flags/api/snapshot?environment=prod`, which
   returns an `ETag` and answers `304 Not Modified` while the snapshot is unchanged.
 - **Refunds** (`/refunds`): look up a charge and request a refund. Refunds under $100 execute immediately.
@@ -36,10 +39,16 @@ tables. They communicate through events.
   Each request carries an idempotency key, so a double submit never refunds twice. Requests that exceed the
   remaining refundable amount are rejected. The payment processor is a fake adapter. The app shows a KYC hint
   on a transaction, built from `kyc.decision.v1` events only.
-- **Feedback queue** (`/feedback`): any page has a footer link for reporting friction. Each ticket can be filed
-  as a pre-filled GitHub issue.
-- **KYC review** is **design-only**. There is no KYC app in this repository. The refunds app consumes its
-  `kyc.decision.v1` event contract, and the demo seed publishes sample events.
+- **Feedback queue** (`/feedback`): every page has a floating **Feedback** button for reporting friction. Tickets
+  land on a board (open / filed / shipped). Admins (the platform team) triage a ticket into a pre-filled GitHub
+  issue; operators never need to open GitHub.
+- **KYC review** (`/kyc`): cases arrive from the KYC vendor's **signed webhook** (`POST /kyc/webhook/vendor`,
+  HMAC-SHA256 in `X-Vendor-Signature`, idempotent on the vendor's id). Deterministic, explainable risk rules run on
+  intake: shared device fingerprint / address / IP with a rejected applicant, repeated device fingerprints, vendor check
+  results, disposable email domains. Clean passes auto-approve; everything else waits for an analyst with `kyc.review`.
+  Rejecting a case re-scores every pending case linked to it. Decisions emit `kyc.decision.v1`, which the refunds app
+  consumes for its risk hint; refunds never reads KYC tables. The queue has a "Simulate vendor webhook" button that signs a
+  payload and runs it through the real intake path (scenarios: clean, same device as a rejected applicant, vendor review).
 
 The shell (`app/main.py`) provides login, a home page, a cross-app approvals inbox (`/approvals`), the audit log
 (`/audit`) and the notification log (`/notifications`).
@@ -63,7 +72,7 @@ Open http://localhost:8000 and log in as one of the demo users:
 | April Approver (`april@corp.test`) | approver | approve prod flag changes and refunds under $1,000 |
 | Adam Admin (`adam@corp.test`) | admin | everything, including refunds of $1,000 or more |
 
-To point "File as GitHub issue" at your repository, set `GITHUB_REPO=owner/repo` before starting the server.
+Triage creates the GitHub issue through the API (`app/platform/github.py`, label `devin` so an automation can pick it up). Without `GITHUB_TOKEN` a fake tracker is used; set `GITHUB_TOKEN` and `GITHUB_REPO=owner/repo` for real issues, and `FEEDBACK_AUTO_FILE=1` to file on submission instead of on triage.
 
 ## How to test
 
@@ -80,10 +89,9 @@ queue. A smoke test renders every page as every role against the full demo seed.
 ## Demo flow
 
 1. Log in as **Oscar Operator** and use the app normally: toggle a dev flag, request a refund.
-2. When something is awkward, click **Send feedback about this page** in the footer and describe the friction.
-   The ticket records which page it came from.
-3. On the ticket, click **File as GitHub issue**. This opens a pre-filled issue with the page, the kind, the
-   reporter's role and the description. Paste the issue URL back to mark the ticket as filed.
+2. When something is awkward, click the floating **Feedback** button and describe the friction. The ticket
+   records which page it came from.
+3. Log in as **Adam Admin** (the platform team). On the ticket, click **Create GitHub issue**: the app files it with the `devin` label and links it.
 4. Devin picks up the issue, changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
 
@@ -98,7 +106,7 @@ This is a prototype for an evaluation, not a deployable system. Known gaps:
 - **Database:** SQLite, with `create_all` instead of migrations. Production needs Postgres and Alembic.
 - **Integrations are fakes:** the payment processor and the Teams/Slack notifier are stand-ins. Outbox events are
   dispatched in-process, with no retry worker or broker.
-- **No field-level PII masking:** every role sees full customer names and emails.
+- **No field-level PII masking:** every role sees full customer names and emails in refunds; KYC pages (applicant address, device, documents) are limited to approver/admin via `kyc.read`.
 - **No hosting, monitoring or alerting:** there is no deployment config, observability, backups or on-call setup.
 - **No load or security testing:** there has been no performance testing, penetration testing or threat model.
   The flag snapshot endpoint is unauthenticated, where production would require per-service tokens.

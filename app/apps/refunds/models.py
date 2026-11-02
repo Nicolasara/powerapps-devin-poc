@@ -64,4 +64,5 @@ class KycSignal(Base):
     risk_band: Mapped[str] = mapped_column(String(20))
     outcome: Mapped[str] = mapped_column(String(50))
     reviewed_manually: Mapped[bool] = mapped_column(Boolean, default=False)
+    case_id: Mapped[int | None] = mapped_column(Integer)  # opaque reference from the event; used only to build a link
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

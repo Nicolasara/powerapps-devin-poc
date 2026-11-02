@@ -3,13 +3,14 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.platform import events
 from app.platform.audit import audit
-from app.platform.auth import current_user
+from app.platform.auth import current_user, require
 from app.platform.db import get_db
+from app.platform.github import IssueTrackerError, get_issue_tracker, issue_label
 from app.platform.models import User
 from app.web import render
 
@@ -19,11 +20,15 @@ router = APIRouter(prefix="/feedback")
 
 
 def github_repo() -> str:
-    return os.environ.get("GITHUB_REPO", "OWNER/powerapps-devin-poc")
+    return os.environ.get("GITHUB_REPO", "Nicolasara/powerapps-devin-poc")
 
 
-def github_issue_url(ticket: FeedbackTicket, reporter_role: str) -> str:
-    body = "\n".join([
+def auto_file_enabled() -> bool:
+    return os.environ.get("FEEDBACK_AUTO_FILE", "").lower() in ("1", "true", "yes")
+
+
+def issue_body(ticket: FeedbackTicket, reporter_role: str) -> str:
+    return "\n".join([
         f"**Page:** `{ticket.page_path or '(not specified)'}`",
         f"**Kind:** {ticket.kind}",
         f"**Reporter role:** {reporter_role}",
@@ -35,8 +40,40 @@ def github_issue_url(ticket: FeedbackTicket, reporter_role: str) -> str:
         "---",
         f"Filed from the internal tools feedback queue (ticket #{ticket.id}).",
     ])
-    query = urlencode({"title": f"[{ticket.kind}] {ticket.title}", "body": body})
-    return f"https://github.com/{github_repo()}/issues/new?{query}"
+
+
+def _reporter_role(db: Session, ticket: FeedbackTicket) -> str:
+    reporter = db.scalar(select(User).where(User.email == ticket.submitted_by_email))
+    return reporter.role if reporter else "unknown"
+
+
+def file_to_github(db: Session, ticket: FeedbackTicket, actor: User | None) -> str:
+    """Create the GitHub issue for a ticket through the adapter, link it and audit it. Exactly one issue per
+    ticket: the row is claimed (open -> filing) in its own committed transaction before the external call, so a
+    concurrent click or a retry after a crash sees the claim instead of creating a second issue."""
+    if ticket.github_issue_url:
+        return ticket.github_issue_url
+    claimed = db.execute(update(FeedbackTicket).where(FeedbackTicket.id == ticket.id, FeedbackTicket.status == "open")
+                         .values(status="filing")).rowcount
+    if claimed != 1:
+        db.refresh(ticket)
+        raise IssueTrackerError(f"ticket is already being filed (status {ticket.status})")
+    db.commit()
+    db.refresh(ticket)
+    label = issue_label()
+    try:
+        url = get_issue_tracker().create_issue(github_repo(), f"[{ticket.kind}] {ticket.title}",
+                                               issue_body(ticket, _reporter_role(db, ticket)), [label, ticket.kind])
+    except IssueTrackerError:
+        ticket.status = "open"  # release the claim so triage can retry
+        db.commit()
+        raise
+    ticket.github_issue_url = url
+    ticket.status = "filed"
+    audit(db, actor, "feedback.filed", "feedback", ticket.id, before={"status": "open", "github_issue_url": None},
+          after={"status": ticket.status, "github_issue_url": url, "label": label},
+          reason="auto-filed on submission" if actor is None else None)
+    return url
 
 
 def _get(db: Session, ticket_id: int) -> FeedbackTicket:
@@ -74,31 +111,37 @@ def create(title: str = Form(...), body: str = Form(""), kind: str = Form("frict
     db.flush()
     audit(db, user, "feedback.created", "feedback", t.id, after={"title": t.title, "kind": t.kind, "page": t.page_path})
     db.commit()
+    msg = "Thanks, feedback recorded"
+    if auto_file_enabled():
+        try:
+            file_to_github(db, t, None)
+            msg = "Thanks, feedback recorded and filed to GitHub"
+        except IssueTrackerError as e:
+            audit(db, None, "feedback.file_failed", "feedback", t.id, after={"error": str(e)[:200]})
+    db.commit()
     events.dispatch_pending(db)
-    return RedirectResponse(f"/feedback/{t.id}?msg=Thanks%2C+feedback+recorded", status_code=303)
+    return RedirectResponse(f"/feedback/{t.id}?{urlencode({'msg': msg})}", status_code=303)
 
 
 @router.get("/{ticket_id}")
 def detail(ticket_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     t = _get(db, ticket_id)
     reporter = db.scalar(select(User).where(User.email == t.submitted_by_email))
-    reporter_role = reporter.role if reporter else "unknown"
-    return render(request, "feedback/detail.html", user, ticket=t, reporter=reporter, reporter_role=reporter_role,
-                  issue_url=github_issue_url(t, reporter_role), repo=github_repo())
+    return render(request, "feedback/detail.html", user, ticket=t, reporter=reporter,
+                  reporter_role=_reporter_role(db, t), repo=github_repo(), label=issue_label(),
+                  auto_file=auto_file_enabled())
 
 
-@router.post("/{ticket_id}/mark-filed")
-def mark_filed(ticket_id: int, github_issue_url: str = Form(...), db: Session = Depends(get_db),
-               user: User = Depends(current_user)):
+@router.post("/{ticket_id}/file")
+def file_issue(ticket_id: int, db: Session = Depends(get_db), user: User = Depends(require("admin"))):
+    """Platform-team triage: one click creates the GitHub issue (labelled so Devin picks it up) and links it."""
     t = _get(db, ticket_id)
-    url = github_issue_url.strip()
-    if not url.startswith(("https://", "http://")):
-        return RedirectResponse(f"/feedback/{t.id}?error=Enter+the+full+issue+URL", status_code=303)
-    before = {"status": t.status, "github_issue_url": t.github_issue_url}
-    t.github_issue_url = url
-    t.status = "filed"
-    audit(db, user, "feedback.filed", "feedback", t.id, before=before,
-          after={"status": t.status, "github_issue_url": t.github_issue_url})
+    if t.github_issue_url:
+        return RedirectResponse(f"/feedback/{t.id}?notice=Already+filed", status_code=303)
+    try:
+        file_to_github(db, t, user)
+    except IssueTrackerError as e:
+        return RedirectResponse(f"/feedback/{t.id}?{urlencode({'error': f'GitHub refused the issue: {e}'})}", status_code=303)
     db.commit()
     events.dispatch_pending(db)
-    return RedirectResponse(f"/feedback/{t.id}?msg=Linked+to+GitHub+issue", status_code=303)
+    return RedirectResponse(f"/feedback/{t.id}?msg=GitHub+issue+created", status_code=303)
