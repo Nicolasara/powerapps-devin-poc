@@ -52,6 +52,23 @@ def register_apps() -> None:
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns(bind=None) -> None:
+    """Additive, idempotent schema catch-up for databases created before a column existed (SQLite dev/demo DBs).
+    A real deployment would use Alembic; this keeps `create_all` from silently leaving tables behind."""
+    from sqlalchemy import inspect, text
+    bind = bind or engine
+    insp = inspect(bind)
+    with bind.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in have and col.nullable:
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(bind.dialect)}'))
 
 
 @asynccontextmanager

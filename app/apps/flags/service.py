@@ -150,6 +150,9 @@ def promote(db: Session, actor: User, key: str, to_env: str) -> tuple[Flag, Appr
     target = db.scalar(select(Flag).where(Flag.key == key, Flag.environment == to_env))
     if target is None and to_env == "prod":
         # Don't create the prod row until a checker approves: the applier creates it (see _applier).
+        if db.scalar(select(Approval.id).where(Approval.kind == CHANGE_KIND, Approval.status == "pending",
+                                               Approval.entity_id == f"new:{key}:{to_env}")):
+            raise FlagError(f"a promotion of {key} to {to_env} is already awaiting approval")
         state = f"{'ON' if source.enabled else 'OFF'} at {source.rollout_percent}%"
         summary = f"Promote {key} from {from_env} to {to_env} ({state})"
         payload = {**source.state(), "create": {"key": key, "description": source.description,

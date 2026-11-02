@@ -121,7 +121,10 @@ def decide(case_id: int, decision: Annotated[str, Form()], db: Db, user: Reviewe
 @router.post("/webhook/vendor")
 async def vendor_webhook(request: Request, db: Db):
     """Signed webhook from the KYC vendor. No user session: the HMAC signature is the authentication."""
-    if int(request.headers.get("content-length") or 0) > MAX_WEBHOOK_BYTES:
+    declared = request.headers.get("content-length") or "0"
+    if not declared.isdigit():
+        raise HTTPException(status_code=400, detail="invalid content-length")
+    if int(declared) > MAX_WEBHOOK_BYTES:
         raise HTTPException(status_code=413, detail="payload too large")
     body = await request.body()
     if len(body) > MAX_WEBHOOK_BYTES:

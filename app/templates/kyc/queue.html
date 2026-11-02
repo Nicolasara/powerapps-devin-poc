@@ -30,7 +30,7 @@
       <a href="/kyc?status=rejected" class="{{ 'on' if status == 'rejected' }}">Rejected <span class="n">{{ counts.rejected }}</span></a>
       <a href="/kyc?status=all" class="{{ 'on' if status == 'all' }}">All</a>
     </div>
-    <form class="inline" method="get" action="/kyc"><input type="hidden" name="status" value="{{ status }}"><div class="input-icon">{{ icon("search") }}<input type="search" name="q" value="{{ q }}" placeholder="Search applicant" style="width:220px;height:30px"></div></form>
+    <form class="inline" method="get" action="/kyc"><input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="risk" value="{{ risk }}"><div class="input-icon">{{ icon("search") }}<input type="search" name="q" value="{{ q }}" placeholder="Search applicant" style="width:220px;height:30px"></div></form>
     <div class="seg">
       <a href="/kyc?status={{ status }}" class="{{ 'on' if not risk }}">Any risk</a>
       {% for r in ['high', 'medium', 'low'] %}<a href="/kyc?status={{ status }}&risk={{ r }}" class="{{ 'on' if risk == r }}">{{ r }}</a>{% endfor %}
