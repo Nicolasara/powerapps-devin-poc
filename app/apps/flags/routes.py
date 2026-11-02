@@ -67,8 +67,9 @@ def list_flags(request: Request, user: Reader, db: DB, environment: str | None =
         rows = [r for r in rows if r["envs"].get(env)]
     # Every environment is shown on each row, so pending must cover all of them, not just the filtered env.
     pending = service.pending_by_flag(db, [f.id for r in rows for f in r["envs"].values() if f])
+    pending_new = service.pending_new(db)
     return render(request, "flags/list.html", user, flags=flags, rows=rows, environment=env,
-                  environments=ENVIRONMENTS, pending=pending, notice=notice)
+                  environments=ENVIRONMENTS, pending=pending, pending_new=pending_new, notice=notice)
 
 
 @router.get("/new")
@@ -120,8 +121,9 @@ def flag_detail(request: Request, flag_id: int, user: Reader, db: DB, notice: st
     ).all()
     env_of = {str(f.id): f.environment for f in stages.values()}
     pending = service.pending_by_flag(db, [f.id for f in stages.values()])
+    pending_new = {env: a for (k, env), a in service.pending_new(db).items() if k == flag.key}
     return render(request, "flags/detail.html", user, flag=flag, stages=stages, environments=ENVIRONMENTS,
-                  history=history, env_of=env_of, pending=pending, notice=notice)
+                  history=history, env_of=env_of, pending=pending, pending_new=pending_new, notice=notice)
 
 
 @router.get("/{flag_id}/toggle/confirm")

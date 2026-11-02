@@ -68,7 +68,9 @@ def test_mark_filed_links_issue(login, db):
     oscar = login("oscar")
     location = _create(oscar, "Add card last-4 search").headers["location"]
     ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
-    resp = oscar.post(f"/feedback/{ticket_id}/mark-filed",
+    assert oscar.post(f"/feedback/{ticket_id}/mark-filed", data={"github_issue_url": "https://x/1"},
+                      follow_redirects=False).status_code == 403  # triage is admin-only
+    resp = login("adam").post(f"/feedback/{ticket_id}/mark-filed",
                       data={"github_issue_url": "https://github.com/acme/internal-tools/issues/7"},
                       follow_redirects=False)
     assert resp.status_code == 303

@@ -138,6 +138,7 @@ def home(request: Request, user: User = Depends(current_user), db: Session = Dep
     """Dashboard: shell-level summary of every app (the shell may read app tables; apps may not read each other's)."""
     Flag, RefundRequest, FeedbackTicket = flags_models.Flag, refunds_models.RefundRequest, feedback_models.FeedbackTicket
     KycCase = kyc_models.KycCase
+    refunds_service.sync_rejections(db)
 
     def count(stmt) -> int:
         return db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
