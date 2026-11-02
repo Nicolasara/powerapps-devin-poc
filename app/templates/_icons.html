@@ -38,7 +38,7 @@
 {%- endmacro %}
 
 {% macro th_sort(label, key, sort, dir, sort_url, cls="") -%}
-<th class="{{ cls }}"><a class="th-sort{{ ' on' if sort == key }}" href="{{ sort_url(key) }}">{{ label }}<span class="dir">{% if sort == key %}{{ '&uarr;' if dir == 'asc' else '&darr;' }}{% else %}&#8597;{% endif %}</span></a></th>
+<th class="{{ cls }}"><a class="th-sort{{ ' on' if sort == key }}" href="{{ sort_url(key) }}">{{ label }}<span class="dir">{% if sort == key %}{{ '↑' if dir == 'asc' else '↓' }}{% else %}↕{% endif %}</span></a></th>
 {%- endmacro %}
 
 {% macro avatar(u, cls="") -%}

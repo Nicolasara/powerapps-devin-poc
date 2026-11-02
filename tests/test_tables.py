@@ -13,6 +13,7 @@ def test_kyc_queue_sorts_by_applicant(login, anon):
     html = april.get("/kyc?status=pending&sort=applicant&dir=desc").text
     assert html.index("Zed Last") < html.index("Amy First")
     assert 'href="/kyc?status=pending&amp;sort=applicant&amp;dir=asc"' in html
+    assert "↓" in html and "&amp;darr;" not in html and "&darr;" not in html
 
 
 def test_kyc_queue_ignores_unknown_sort(login):
