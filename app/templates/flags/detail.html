@@ -12,6 +12,14 @@
   <div class="actions"><a class="btn btn-ghost" href="/flags">{{ icon("arrow-left") }} All flags</a></div>
 </div>
 
+<div class="seg mb" style="gap:4px">
+  {% for env in environments %}{% set s = siblings.get(env) %}
+  {% if s %}<a href="/flags/{{ s.id }}" class="{{ 'on' if s.id == flag.id }}">{{ env }} <span class="n">{{ 'On' if s.enabled else 'Off' }} · {{ s.rollout_percent }}%</span></a>
+  {% else %}<a class="faint" title="Not yet promoted to {{ env }}">{{ env }} <span class="n">—</span></a>{% endif %}
+  {% if not loop.last %}<span class="faint" style="align-self:center">{{ icon("chevron-right") }}</span>{% endif %}
+  {% endfor %}
+</div>
+
 <div class="split">
   <div>
     <div class="grid g3 mb">

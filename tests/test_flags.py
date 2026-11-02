@@ -160,3 +160,42 @@ def test_snapshot_etag_and_304(anon, login, db, flags):
 
 def test_snapshot_rejects_unknown_environment(anon):
     assert anon.get("/flags/api/snapshot", params={"environment": "qa"}).status_code == 400
+
+
+def test_promote_dev_to_staging_applies_immediately(login, db, flags):
+    oscar = login("oscar")
+    resp = oscar.post("/flags/promote", data={"key": "instant_transfers", "to_env": "staging"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "promoted to staging" in _query(resp)["notice"][0]
+    staging = db.scalar(select(Flag).where(Flag.key == "instant_transfers", Flag.environment == "staging"))
+    assert staging is not None
+    assert staging.state() == _flag(db, flags["dev"]).state()
+
+
+def test_promote_to_prod_requires_approval(login, db, flags):
+    oscar = login("oscar")
+    oscar.post("/flags/promote", data={"key": "instant_transfers", "to_env": "staging"}, follow_redirects=False)
+    staging = db.scalar(select(Flag).where(Flag.key == "instant_transfers", Flag.environment == "staging"))
+    oscar.post(f"/flags/{staging.id}/toggle", follow_redirects=False)  # staging ON, 100%
+
+    resp = oscar.post("/flags/promote", data={"key": "instant_transfers", "to_env": "prod"}, follow_redirects=False)
+    assert "approval" in _query(resp)["notice"][0]
+    prod = _flag(db, flags["prod"])
+    assert prod.enabled is False and prod.rollout_percent == 25
+
+    approval = _pending(db, flags["prod"])[0]
+    assert approval.payload == {"enabled": True, "rollout_percent": 100}
+    login("april").post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
+    prod = _flag(db, flags["prod"])
+    assert prod.enabled is True and prod.rollout_percent == 100
+
+
+def test_new_flag_is_created_dark_in_later_environments(login, db):
+    oscar = login("oscar")
+    resp = oscar.post("/flags", data={"key": "new_thing", "description": "x", "owner_team": "t", "enabled": "true",
+                                      "rollout_percent": "50"}, follow_redirects=False)
+    assert resp.status_code == 303
+    rows = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == "new_thing"))}
+    assert set(rows) == {"dev", "staging", "prod"}
+    assert rows["dev"].state() == {"enabled": True, "rollout_percent": 50}
+    assert rows["prod"].state() == {"enabled": False, "rollout_percent": 0}

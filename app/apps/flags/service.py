@@ -109,6 +109,53 @@ def create_flag(db: Session, actor: User, key: str, description: str, owner_team
     return flag
 
 
+def create_key(db: Session, actor: User, key: str, description: str, owner_team: str, enabled: bool,
+               rollout_percent) -> Flag:
+    """A flag starts life in the earliest environment and is promoted forward; later envs start dark."""
+    first, *later = ENVIRONMENTS
+    flag = create_flag(db, actor, key, description, owner_team, first, enabled, rollout_percent)
+    for env in later:
+        create_flag(db, actor, key, description, owner_team, env, False, 0)
+    return flag
+
+
+def next_environment(env: str) -> str | None:
+    i = ENVIRONMENTS.index(env)
+    return ENVIRONMENTS[i + 1] if i + 1 < len(ENVIRONMENTS) else None
+
+
+def by_key(db: Session) -> list[dict]:
+    """Rows for the pipeline view: one entry per key with its flag in each environment (None if absent)."""
+    out: dict[str, dict] = {}
+    for f in db.scalars(select(Flag).order_by(Flag.key, Flag.environment)):
+        row = out.setdefault(f.key, {"key": f.key, "description": f.description, "owner_team": f.owner_team,
+                                     "envs": dict.fromkeys(ENVIRONMENTS)})
+        row["envs"][f.environment] = f
+    return list(out.values())
+
+
+def promote(db: Session, actor: User, key: str, to_env: str) -> tuple[Flag, Approval | None]:
+    """Copy the state of the previous environment into to_env. Prod promotion goes through approval."""
+    to_env = validate_environment(to_env)
+    if to_env == ENVIRONMENTS[0]:
+        raise FlagError(f"{to_env} is the first environment; nothing to promote from")
+    from_env = ENVIRONMENTS[ENVIRONMENTS.index(to_env) - 1]
+    source = db.scalar(select(Flag).where(Flag.key == key, Flag.environment == from_env))
+    if source is None:
+        raise FlagError(f"{key} does not exist in {from_env}")
+    target = db.scalar(select(Flag).where(Flag.key == key, Flag.environment == to_env))
+    if target is None:
+        target = create_flag(db, actor, key, source.description, source.owner_team, to_env, False, 0)
+    if target.state() == source.state():
+        raise FlagError(f"{key} in {to_env} already matches {from_env}")
+    if to_env == "prod" and pending_by_flag(db, [target.id]):
+        raise FlagError(f"{key} in prod already has a change awaiting approval")
+    state = f"{'ON' if source.enabled else 'OFF'} at {source.rollout_percent}%"
+    summary = f"Promote {key} from {from_env} to {to_env} ({state})"
+    approval = request_change(db, actor, target, source.state(), summary)
+    return target, approval
+
+
 def pending_by_flag(db: Session, flag_ids: list[int] | None = None) -> dict[int, list[Approval]]:
     q = select(Approval).where(Approval.kind == CHANGE_KIND, Approval.status == "pending").order_by(Approval.id)
     if flag_ids is not None:
