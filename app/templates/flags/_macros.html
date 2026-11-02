@@ -60,7 +60,9 @@
       <button class="btn {{ size }} btn-primary" type="submit" {% if plan.pending_next %}disabled title="Awaiting approval"{% else %}title="Request prod {{ plan.next.rollout_percent }}% (needs approval)"{% endif %}>Roll forward {{ icon("arrow-right") }}</button>
     </form>
     {% else %}
-    <a class="btn {{ size }} btn-primary" href="/flags/plan/{{ key }}/forward/confirm?back_to={{ back_to | urlencode }}" title="{{ plan.next.environment }} {{ plan.next.rollout_percent }}%">Roll forward {{ icon("arrow-right") }}</a>
+    <form class="inline" method="post" action="/flags/plan/{{ key }}/forward"><input type="hidden" name="back_to" value="{{ back_to }}">
+      <button class="btn {{ size }} btn-primary" type="submit" title="{{ plan.next.environment }} {{ plan.next.rollout_percent }}% (applies immediately)">Roll forward {{ icon("arrow-right") }}</button>
+    </form>
     {% endif %}
   {% else %}
     <button class="btn {{ size }}" disabled title="Fully rolled out">Complete {{ icon("check") }}</button>
