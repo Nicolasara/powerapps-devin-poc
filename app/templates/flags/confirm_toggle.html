@@ -8,7 +8,7 @@
   <div class="confirm-icon">{{ icon("alert") }}</div>
   <h1 style="font-size:19px">Are you sure?</h1>
   <p class="muted" style="margin:6px 0 0">You're about to {{ 'turn off' if flag.enabled else 'turn on' }} <span class="mono">{{ flag.key }}</span> in {{ env_badge(flag.environment) }}. This applies immediately.</p>
-  <div class="state-flip">{{ state_badge(flag) }} {{ icon("arrow-right") }} {% if flag.enabled %}<span class="badge badge-gray">Off</span>{% else %}<span class="badge badge-green">On</span>{% endif %}<span class="small muted" style="margin-left:auto">{{ flag.rollout_percent }}% rollout</span></div>
+  <div class="state-flip">{{ state_badge(flag) }} {{ icon("arrow-right") }} {% if flag.enabled %}<span class="badge badge-gray">Off</span>{% else %}<span class="badge badge-green">Live · {{ flag.rollout_percent or 100 }}%</span>{% endif %}</div>
   <div style="display:flex;gap:8px;justify-content:flex-end">
     <a class="btn" href="/flags">Cancel</a>
     <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle"><button class="btn {{ 'btn-danger' if flag.enabled else 'btn-primary' }}" type="submit">Yes, {{ 'turn off' if flag.enabled else 'turn on' }}</button></form>

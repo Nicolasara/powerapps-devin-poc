@@ -199,3 +199,17 @@ def test_new_flag_is_created_dark_in_later_environments(login, db):
     assert set(rows) == {"dev", "staging", "prod"}
     assert rows["dev"].state() == {"enabled": True, "rollout_percent": 50}
     assert rows["prod"].state() == {"enabled": False, "rollout_percent": 0}
+
+
+def test_switching_on_a_dark_flag_goes_live_at_100(login, db):
+    dark = Flag(key="dark", environment="dev", enabled=False, rollout_percent=0)
+    db.add(dark)
+    db.commit()
+    login("oscar").post(f"/flags/{dark.id}/toggle", follow_redirects=False)
+    assert _flag(db, dark.id).state() == {"enabled": True, "rollout_percent": 100}
+
+
+def test_zero_rollout_turns_flag_off(login, db, flags):
+    login("oscar").post(f"/flags/{flags['dev']}/toggle", follow_redirects=False)  # ON at 100%
+    login("oscar").post(f"/flags/{flags['dev']}/rollout", data={"rollout_percent": "0"}, follow_redirects=False)
+    assert _flag(db, flags["dev"]).state() == {"enabled": False, "rollout_percent": 0}

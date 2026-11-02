@@ -1,6 +1,6 @@
 """App shell: login, home, cross-app approvals inbox, audit log, notifications. Apps plug in as routers."""
 from contextlib import asynccontextmanager
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.exception_handlers import http_exception_handler
@@ -147,7 +147,7 @@ def home(request: Request, user: User = Depends(current_user), db: Session = Dep
     return render(
         request, "home.html", user, now=utcnow(), recent=recent,
         pending=count(select(Approval).where(Approval.status == "pending")),
-        flag_count=count(select(Flag)), flags_on=count(select(Flag).where(Flag.enabled.is_(True))),
+        flag_count=count(select(Flag)), flags_on=count(select(Flag).where(Flag.enabled.is_(True), Flag.rollout_percent > 0)),
         refunded_today=refunds_service.fmt_money(refunded_today),
         refund_pending=count(select(RefundRequest).where(RefundRequest.status == "pending_approval")),
         open_feedback=count(select(FeedbackTicket).where(FeedbackTicket.status == "open")),
@@ -196,15 +196,29 @@ def decide_approval(approval_id: int, decision: str = Form(...), reason: str = F
 
 # ---------------------------------------------------------------- audit log
 
+AUDIT_PAGE_SIZE = 50
+
+
 @app.get("/audit")
-def audit_log(request: Request, entity_type: str = "", user: User = Depends(require("audit.read")),
+@app.get("/audit")
+def audit_log(request: Request, entity_type: str = "", page: int = 1, user: User = Depends(require("audit.read")),
               db: Session = Depends(get_db)):
-    stmt = select(AuditEvent).order_by(AuditEvent.id.desc()).limit(200)
+    base = select(AuditEvent)
     if entity_type:
-        stmt = stmt.where(AuditEvent.entity_type == entity_type)
-    rows = db.scalars(stmt).all()
+        base = base.where(AuditEvent.entity_type == entity_type)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    pages = max(1, (total + AUDIT_PAGE_SIZE - 1) // AUDIT_PAGE_SIZE)
+    page = min(max(1, page), pages)
+    rows = db.scalars(
+        base.order_by(AuditEvent.id.desc()).offset((page - 1) * AUDIT_PAGE_SIZE).limit(AUDIT_PAGE_SIZE)
+    ).all()
     entity_types = db.scalars(select(AuditEvent.entity_type).distinct().order_by(AuditEvent.entity_type)).all()
-    return render(request, "audit.html", user, rows=rows, entity_type=entity_type, entity_types=entity_types)
+
+    def page_url(n: int) -> str:
+        return "/audit?" + urlencode({k: v for k, v in {"entity_type": entity_type, "page": n}.items() if v})
+
+    return render(request, "audit.html", user, rows=rows, entity_type=entity_type, entity_types=entity_types,
+                  page=page, pages=pages, total=total, page_url=page_url, page_size=AUDIT_PAGE_SIZE)
 
 
 # ---------------------------------------------------------------- notifications (fake Teams/Slack sink)

@@ -16,7 +16,7 @@
 
 <div class="grid g4 mb">
   {{ stat("Pending approvals", pending, "check-circle", "tint-amber" if pending else "tint-green", "waiting on a checker") }}
-  {{ stat("Feature flags", flag_count, "flag", "tint-indigo", flags_on ~ " enabled") }}
+  {{ stat("Feature flags", flag_count, "flag", "tint-indigo", flags_on ~ " live") }}
   {{ stat("Refunded today", refunded_today, "dollar", "tint-green", refund_pending ~ " pending") }}
   {{ stat("Open feedback", open_feedback, "chat", "tint-blue", "from the people using these tools") }}
 </div>

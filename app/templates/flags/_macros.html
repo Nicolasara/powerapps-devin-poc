@@ -2,8 +2,14 @@
 <span class="badge {{ {'prod': 'badge-red', 'staging': 'badge-amber'}.get(env, 'badge-blue') }}">{{ env }}</span>
 {%- endmacro %}
 
+{% macro live(flag) -%}{{ flag.enabled and flag.rollout_percent > 0 }}{%- endmacro %}
+
 {% macro state_badge(flag) -%}
-{% if flag.enabled %}<span class="badge badge-green">On</span>{% else %}<span class="badge badge-gray">Off</span>{% endif %}
+{% if flag.enabled and flag.rollout_percent > 0 %}<span class="badge badge-green">Live · {{ flag.rollout_percent }}%</span>{% else %}<span class="badge badge-gray">Off</span>{% endif %}
+{%- endmacro %}
+
+{% macro state_text(flag) -%}
+{% if flag.enabled and flag.rollout_percent > 0 %}Live <span class="muted" style="font-weight:500;font-size:14px">· {{ flag.rollout_percent }}%</span>{% else %}Off{% endif %}
 {%- endmacro %}
 
 {% macro rollout_bar(pct) -%}
@@ -12,12 +18,13 @@
 
 {# The visual toggle. Non-prod goes through a confirm page first; prod submits an approval request. #}
 {% macro switch(flag, pending=False) -%}
+{% set on = flag.enabled and flag.rollout_percent > 0 %}
 {% if flag.environment == 'prod' %}
 <form class="inline" method="post" action="/flags/{{ flag.id }}/toggle">
-  <button class="switch {{ 'on' if flag.enabled }}" type="submit" role="switch" aria-checked="{{ 'true' if flag.enabled else 'false' }}"
+  <button class="switch {{ 'on' if on }}" type="submit" role="switch" aria-checked="{{ 'true' if on else 'false' }}"
           {% if pending %}disabled title="A change is already awaiting approval"{% else %}title="Request {{ 'disable' if flag.enabled else 'enable' }} (needs approval)"{% endif %}></button>
 </form>
 {% else %}
-<a class="switch {{ 'on' if flag.enabled }}" role="switch" aria-checked="{{ 'true' if flag.enabled else 'false' }}" href="/flags/{{ flag.id }}/toggle/confirm" title="{{ 'Disable' if flag.enabled else 'Enable' }}"></a>
+<a class="switch {{ 'on' if on }}" role="switch" aria-checked="{{ 'true' if on else 'false' }}" href="/flags/{{ flag.id }}/toggle/confirm" title="{{ 'Disable' if flag.enabled else 'Enable' }}"></a>
 {% endif %}
 {%- endmacro %}
