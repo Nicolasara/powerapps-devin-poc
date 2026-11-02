@@ -3,14 +3,14 @@
 {% block title %}Audit log{% endblock %}
 {% block crumbs %}<span class="sep">/</span><span class="cur">Audit log</span>{% endblock %}
 {% block content %}
-<div class="ph"><div><h1>Audit log</h1><p>Append-only record of every change, with who, what, before and after. Latest 200 events{% if entity_type %} for <code>{{ entity_type }}</code>{% endif %}.</p></div></div>
+<div class="ph"><div><h1>Audit log</h1><p>Append-only record of every change, with who, what, before and after{% if entity_type %}, filtered to <code>{{ entity_type }}</code>{% endif %}.</p></div></div>
 <div class="card flush">
   <div class="toolbar">
     <div class="seg">
       <a href="/audit" class="{{ 'on' if not entity_type }}">All</a>
       {% for et in entity_types %}<a href="/audit?entity_type={{ et }}" class="{{ 'on' if et == entity_type }}">{{ et }}</a>{% endfor %}
     </div>
-    <span class="small muted">{{ rows | length }} events</span>
+    <span class="small muted">{{ total }} event{{ '' if total == 1 else 's' }}{% if pages > 1 %} · page {{ page }} of {{ pages }}{% endif %}</span>
   </div>
   <div class="card-b">
   {% if rows %}
@@ -38,6 +38,16 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if pages > 1 %}
+  <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:none">
+    <span class="small muted">Showing {{ (page - 1) * page_size + 1 }}–{{ (page - 1) * page_size + rows | length }} of {{ total }}</span>
+    <span style="display:flex;gap:6px;align-items:center">
+      {% if page > 1 %}<a class="btn btn-sm" href="{{ page_url(page - 1) }}">{{ icon("arrow-left") }} Newer</a>{% endif %}
+      {% for n in range(1, pages + 1) %}{% if n == 1 or n == pages or (n - page) | abs <= 2 %}<a class="btn btn-sm {{ 'btn-primary' if n == page }}" href="{{ page_url(n) }}">{{ n }}</a>{% elif (n - page) | abs == 3 %}<span class="faint">…</span>{% endif %}{% endfor %}
+      {% if page < pages %}<a class="btn btn-sm" href="{{ page_url(page + 1) }}">Older {{ icon("arrow-right") }}</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
   {% else %}{{ empty("No events", "Changes will show up here as they happen.", "shield") }}{% endif %}
   </div>
 </div>

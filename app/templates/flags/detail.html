@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, empty %}
-{% from "flags/_macros.html" import env_badge, state_badge, rollout_bar, switch %}
+{% from "flags/_macros.html" import env_badge, state_badge, state_text, rollout_bar, switch %}
 {% block title %}{{ flag.key }}{% endblock %}
 {% block crumbs %}<span class="sep">/</span><a href="/flags">Feature flags</a><span class="sep">/</span><span class="cur">{{ flag.key }}</span>{% endblock %}
 {% block content %}
@@ -24,16 +24,17 @@
     <div class="card-b">
       {% if f %}
       <div class="stage-state">
-        <div class="val">{{ 'On' if f.enabled else 'Off' }} <span class="muted" style="font-weight:500;font-size:14px">· {{ f.rollout_percent }}% rollout</span></div>
-        {{ rollout_bar(f.rollout_percent) }}
+        <div class="val">{{ state_text(f) }}</div>
+        {% if f.enabled and f.rollout_percent > 0 %}{{ rollout_bar(f.rollout_percent) }}{% endif %}
       </div>
       {% if p %}
       <div class="alert alert-warn" style="margin:12px 0 0;padding:8px 10px;font-size:12.5px">{{ icon("clock") }}<div>{% for a in p %}<div>{{ a.summary }} <span class="muted">(#{{ a.id }})</span></div>{% endfor %}<a href="/approvals">Open approvals</a></div></div>
       {% endif %}
       {% if 'flags.write' in perms %}
       <form method="post" action="/flags/{{ f.id }}/rollout" class="stage-rollout">
-        <input name="rollout_percent" type="number" min="0" max="100" value="{{ f.rollout_percent }}" aria-label="Rollout % in {{ env }}">
+        <input name="rollout_percent" type="number" min="0" max="100" value="{{ f.rollout_percent if f.enabled else 0 }}" aria-label="Rollout % in {{ env }}">
         <button class="btn btn-sm" type="submit" {% if env == 'prod' and p %}disabled{% endif %}>{{ 'Request rollout' if env == 'prod' else 'Set rollout' }}</button>
+        <span class="hint" style="margin:0;align-self:center">0% = off</span>
       </form>
       {% endif %}
       <div class="sub" style="margin-top:10px">Last change {{ f.updated_at.strftime('%b %d, %H:%M') if f.updated_at else '—' }} · {{ (f.updated_by_email or '').split('@')[0] }}</div>

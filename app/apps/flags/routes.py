@@ -129,8 +129,11 @@ def toggle_flag(flag_id: int, user: Writer, db: DB):
     if flag.environment == "prod" and service.pending_by_flag(db, [flag.id]):
         return _redirect("/flags", f"{flag.key} in prod already has a change awaiting approval.")
     target = not flag.enabled
+    payload: dict = {"enabled": target}
+    if target and flag.rollout_percent == 0:
+        payload["rollout_percent"] = 100  # a switch flipped on means "live", not "on at 0%"
     summary = f"{'Enable' if target else 'Disable'} {flag.key} in {flag.environment}"
-    approval = service.request_change(db, user, flag, {"enabled": target}, summary)
+    approval = service.request_change(db, user, flag, payload, summary)
     _commit(db)
     if approval is not None and approval.status == "pending":
         return _redirect("/flags", f"Sent for approval: {summary}.")
@@ -149,7 +152,8 @@ def set_rollout(flag_id: int, rollout_percent: Annotated[str, Form()], user: Wri
     if flag.environment == "prod" and service.pending_by_flag(db, [flag.id]):
         return _redirect(f"/flags/{flag.id}", "This flag already has a change awaiting approval.")
     summary = f"Set {flag.key} rollout in {flag.environment} from {flag.rollout_percent}% to {pct}%"
-    approval = service.request_change(db, user, flag, {"rollout_percent": pct}, summary)
+    payload: dict = {"rollout_percent": pct, "enabled": pct > 0}  # 0% is off; any rollout is live
+    approval = service.request_change(db, user, flag, payload, summary)
     _commit(db)
     if approval is not None and approval.status == "pending":
         return _redirect(f"/flags/{flag.id}", f"Sent for approval: {summary}.")

@@ -45,10 +45,9 @@
             <div class="envcell">
               <div class="envtop">
                 {% if 'flags.write' in perms %}{{ switch(f, pending.get(f.id)) }}{% else %}{{ state_badge(f) }}{% endif %}
-                <a class="small" href="/flags/{{ f.id }}">{{ 'On' if f.enabled else 'Off' }}</a>
+                {% if f.enabled and f.rollout_percent > 0 %}{{ rollout_bar(f.rollout_percent) }}{% else %}<span class="small muted">Off</span>{% endif %}
                 {% if pending.get(f.id) %}<span class="badge badge-amber">Pending</span>{% endif %}
               </div>
-              {{ rollout_bar(f.rollout_percent) }}
               <div class="sub">{{ (f.updated_by_email or '').split('@')[0] }} · {{ f.updated_at.strftime('%b %d') if f.updated_at else '' }}</div>
             </div>
             {% else %}

@@ -11,7 +11,8 @@ from app.platform.models import Approval
 PAGES = [
     "/", "/flags", "/flags?environment=prod", "/flags/{flag}", "/flags/api/snapshot?environment=dev",
     "/refunds", "/refunds?q=chen", "/refunds?page=2", "/refunds/tx/{tx}", "/refunds/requests/{rr}",
-    "/approvals", "/feedback", "/feedback?status=open", "/feedback/new?page=/flags", "/feedback/{ticket}",
+    "/approvals", "/audit?page=2", "/audit?entity_type=flag&page=1",
+    "/feedback", "/feedback?status=open", "/feedback/new?page=/flags", "/feedback/{ticket}",
     "/audit", "/audit?entity_type=flag", "/notifications", "/login",
 ]
 WRITER_PAGES = ["/flags/new"]
