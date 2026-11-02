@@ -4,7 +4,8 @@ import hmac
 import os
 from collections import Counter
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.platform import events
@@ -23,16 +24,25 @@ class KycError(ValueError):
     pass
 
 
-def webhook_secret() -> str:
-    return os.environ.get("KYC_WEBHOOK_SECRET", "dev-kyc-webhook-secret")
+def webhook_secret() -> str | None:
+    """Shared HMAC secret with the vendor. The dev default only applies when APP_ENV is unset or 'dev'."""
+    secret = os.environ.get("KYC_WEBHOOK_SECRET")
+    if secret:
+        return secret
+    return "dev-kyc-webhook-secret" if os.environ.get("APP_ENV", "dev") == "dev" else None
 
 
 def sign(body: bytes) -> str:
-    return "sha256=" + hmac.new(webhook_secret().encode(), body, hashlib.sha256).hexdigest()
+    secret = webhook_secret()
+    if not secret:
+        raise KycError("KYC_WEBHOOK_SECRET is not configured")
+    return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
 def verify_signature(body: bytes, header: str | None) -> bool:
-    return bool(header) and hmac.compare_digest(sign(body), header)
+    if not header or not webhook_secret():
+        return False
+    return hmac.compare_digest(sign(body), header)
 
 
 # ---------------------------------------------------------------- risk rules (deterministic, explainable)
@@ -85,6 +95,10 @@ def score(db: Session, case: KycCase) -> tuple[int, str, list[str]]:
     elif device_peers:
         points += 10
         reasons.append("Device fingerprint shared with another applicant")
+    failed_checks = [k for k, v in (case.vendor_checks or {}).items() if v == "fail"]
+    if case.vendor_decision == "pass" and failed_checks:
+        points += 30
+        reasons.append("Vendor passed despite failed checks: " + ", ".join(failed_checks))
     if case.vendor_decision == "fail":
         points += 50
         failed = [k for k, v in (case.vendor_checks or {}).items() if v == "fail"]
@@ -129,12 +143,25 @@ def intake(db: Session, payload: dict) -> tuple[KycCase, bool]:
         vendor_decision=decision, vendor_checks=dict(payload.get("checks") or {}),
     )
     db.add(case)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.flush()
+    except IntegrityError:
+        # Concurrent retry of the same delivery won the race; honour the idempotent contract.
+        return db.scalar(select(KycCase).where(KycCase.vendor_ref == ref)), False
     rescore(db, case)
     audit(db, None, "kyc.case_created", "kyc_case", case.id,
           after={**case.summary(), "vendor_decision": decision, "vendor_ref": ref}, reason=f"webhook from {case.vendor}")
-    if decision == "pass" and case.risk_band == "low":
-        _decide(db, case, None, approve=True, reason="auto: vendor pass, low risk")
+    for other, _ in linked_cases(db, case):
+        if other.status == "pending":
+            before = other.summary()
+            rescore(db, other)
+            if other.summary() != before:
+                audit(db, None, "kyc.rescored", "kyc_case", other.id, before=before, after=other.summary(),
+                      reason=f"linked case #{case.id} received")
+    all_checks_pass = all(v == "pass" for v in (case.vendor_checks or {}).values())
+    if decision == "pass" and all_checks_pass and case.risk_band == "low":
+        _decide(db, case, None, approve=True, reason="auto: vendor pass, all checks pass, low risk")
     else:
         get_notifier(db).send("#kyc-review", f"New KYC case #{case.id} ({case.risk_band} risk): {case.applicant_name} "
                                              f"- {'; '.join(case.risk_reasons) or 'vendor ' + decision}")
@@ -163,6 +190,14 @@ def decide(db: Session, actor: User, case: KycCase, approve: bool, reason: str |
         raise KycError(f"case is already {case.status}")
     if not approve and not (reason or "").strip():
         raise KycError("a reason is required to reject")
+    # Conditional update: exactly one reviewer can move pending -> decided, even under concurrency.
+    claimed = db.execute(update(KycCase).where(KycCase.id == case.id, KycCase.status == "pending")
+                         .values(status="deciding")).rowcount
+    if claimed != 1:
+        db.refresh(case)
+        raise KycError(f"case is already {case.status}")
+    db.refresh(case)
+    case.status = "pending"  # restore for before/after bookkeeping inside _decide
     _decide(db, case, actor, approve, (reason or "").strip() or None)
     if not approve:
         # A rejection changes the picture for everyone still pending who shares a device/address/IP.
