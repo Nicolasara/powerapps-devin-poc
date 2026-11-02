@@ -142,7 +142,8 @@ def roll_back(key: str, user: Writer, db: DB, back_to: Annotated[str, Form()] = 
         db.rollback()
         return _redirect(back_to, str(e))
     _commit(db)
-    return _redirect(back_to, f"{key} rolled back to {result['target']}.")
+    extra = f" {result['cancelled']} pending approval(s) withdrawn." if result["cancelled"] else ""
+    return _redirect(back_to, f"{key} rolled back to {result['target']}.{extra}")
 
 
 @router.post("/plan/{key}")

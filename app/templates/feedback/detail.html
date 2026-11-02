@@ -30,10 +30,13 @@
         {% if ticket.github_issue_url %}
         <p class="small muted" style="margin:0 0 12px">Filed to <code>{{ repo }}</code> with the <span class="badge badge-indigo">{{ label }}</span> label. Devin picks it up from the label and opens a pull request.</p>
         <a class="btn btn-block" href="{{ ticket.github_issue_url }}" target="_blank" rel="noopener">{{ icon("github") }} Open issue {{ icon("external") }}</a>
+        {% elif ticket.status == 'filing' and not claim_stale %}
+        <p class="small muted" style="margin:0">{{ icon("clock") }} Filing to GitHub is in progress. If it does not finish within 2 minutes the claim expires and you can retry here.</p>
         {% else %}
+        {% if claim_stale %}<div class="alert alert-warn" style="margin:0 0 12px;padding:8px 10px;font-size:12.5px">{{ icon("alert") }}<div>A previous filing attempt did not finish. Check <a href="https://github.com/{{ repo }}/issues?q=ticket+%23{{ ticket.id }}" target="_blank" rel="noopener">GitHub for "ticket #{{ ticket.id }}"</a> before retrying.</div></div>{% endif %}
         <p class="small muted" style="margin:0 0 12px">One click creates the issue in <code>{{ repo }}</code> through the GitHub API, labelled <span class="badge badge-indigo">{{ label }}</span> so Devin picks it up. Title and body come from the ticket; nobody retypes anything.</p>
         <form method="post" action="/feedback/{{ ticket.id }}/file">
-          <button class="btn btn-primary btn-block" type="submit">{{ icon("github") }} Create GitHub issue</button>
+          <button class="btn btn-primary btn-block" type="submit">{{ icon("github") }} {{ 'Retry GitHub issue' if claim_stale else 'Create GitHub issue' }}</button>
         </form>
         {% if auto_file %}<p class="hint" style="margin:10px 0 0">Auto-filing is on (<code>FEEDBACK_AUTO_FILE</code>); this ticket was not filed because the GitHub call failed. Check the audit log.</p>{% endif %}
         {% endif %}

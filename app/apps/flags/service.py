@@ -84,6 +84,9 @@ def _applier(db: Session, approval: Approval, actor: User) -> None:
         flag = db.get(Flag, int(approval.entity_id))
         if flag is None:
             raise approvals.ApprovalError("flag no longer exists")
+        expected = payload.pop("expected", None)
+        if expected is not None and expected != flag.state():
+            raise approvals.ApprovalError("the flag changed since this was requested; ask for it again")
     apply_change(db, flag, payload, actor, reason=reason)
 
 
@@ -92,8 +95,11 @@ def register_appliers() -> None:
 
 
 def request_change(db: Session, actor: User, flag: Flag, payload: dict, summary: str) -> Approval | None:
-    """Prod changes need a checker holding flags.approve; everything else applies now."""
+    """Prod changes need a checker holding flags.approve; everything else applies now. The request remembers the
+    state it was made against, so it cannot be applied on top of a later change (e.g. a rollback)."""
     required = "flags.approve" if flag.environment == "prod" else None
+    if required:
+        payload = {**payload, "expected": flag.state()}
     return approvals.request(db, actor, CHANGE_KIND, "flag", flag.id, payload, summary, required_permission=required)
 
 
@@ -331,25 +337,38 @@ def roll_forward(db: Session, actor: User, key: str) -> tuple[dict, Approval | N
     return step, None
 
 
+def pending_for_key(db: Session, key: str, stages: dict[str, Flag]) -> list[Approval]:
+    ids = [str(f.id) for f in stages.values()]
+    q = select(Approval).where(Approval.kind == CHANGE_KIND, Approval.status == "pending",
+                               (Approval.entity_id.in_(ids)) | (Approval.entity_id.like(f"new:{key}:%")))
+    return list(db.scalars(q.order_by(Approval.id)))
+
+
 def roll_back(db: Session, actor: User, key: str) -> dict:
-    """Step back one plan step. Rolling back reduces exposure, so it applies immediately in every stage,
-    including prod (the break-glass path); it is audited and announced like any other change."""
+    """Reduce exposure one plan step: take the highest stage that is live and drop it to the plan's next-lower
+    percentage for that stage, or off. Works from the real state, not the plan prefix, so a prod flag whose dev stage
+    was switched off can still be pulled back. Applies immediately in every stage, prod included (the break-glass
+    path); audited and announced. Pending approvals for the key are withdrawn so a stale increase cannot land later."""
     stages = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == key))}
     if not stages:
         raise FlagError(f"{key} does not exist")
-    state = plan_state(db, key, stages)
-    if state["position"] == 0:
-        raise FlagError(f"{key} is at the start of its plan; nothing to roll back")
-    idx = state["position"] - 1
-    cur = state["steps"][idx]
-    env = cur["environment"]
-    prev_same_env = next((s for s in reversed(state["steps"][:idx]) if s["environment"] == env), None)
-    if prev_same_env:
-        payload = {"enabled": True, "rollout_percent": prev_same_env["rollout_percent"]}
-        target_text = f"{env} {prev_same_env['rollout_percent']}%"
+    steps = get_plan(db, key)
+    live_env = next((e for e in reversed(ENVIRONMENTS)
+                     if e in stages and stages[e].enabled and stages[e].rollout_percent > 0), None)
+    if live_env is None:
+        raise FlagError(f"{key} is not live in any stage; nothing to roll back")
+    flag = stages[live_env]
+    lower = [s["rollout_percent"] for s in steps
+             if s["environment"] == live_env and s["rollout_percent"] < flag.rollout_percent]
+    if lower:
+        payload = {"enabled": True, "rollout_percent": max(lower)}
+        target_text = f"{live_env} {max(lower)}%"
     else:
         payload = {"enabled": False, "rollout_percent": 0}
-        target_text = f"{env} off"
-    flag = stages[env]
-    apply_change(db, flag, payload, actor, reason=f"Roll {key} back to {target_text} (from step {idx + 1} of {state['total']})")
-    return {"step": cur, "target": target_text, "flag": flag}
+        target_text = f"{live_env} off"
+    cancelled = pending_for_key(db, key, stages)
+    for a in cancelled:
+        approvals.cancel(db, actor, a, reason=f"withdrawn: {key} was rolled back to {target_text}")
+    apply_change(db, flag, payload, actor,
+                 reason=f"Roll {key} back to {target_text} (from {live_env} {flag.state()['rollout_percent']}%)")
+    return {"target": target_text, "flag": flag, "cancelled": len(cancelled)}

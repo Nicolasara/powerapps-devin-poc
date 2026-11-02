@@ -12,12 +12,12 @@
 {% set cols = [("open", "Open", "amber"), ("filed", "Filed as issue", "indigo"), ("done", "Shipped", "green")] %}
 <div class="board">
 {% for key, label, tint in cols %}
-  {% set items = tickets | selectattr("status", "equalto", key) | list %}
+  {% set items = tickets | selectattr("status", "in", ["open", "filing"] if key == "open" else [key]) | list %}
   <div class="col">
     <div class="col-h"><span class="badge badge-{{ tint }}">{{ label }}</span><span class="n">{{ items | length }}</span></div>
     {% for t in items %}
     <a class="ticket" href="/feedback/{{ t.id }}">
-      <div class="meta"><span class="badge {{ kind_badge.get(t.kind, 'badge-gray') }}">{{ t.kind }}</span><span class="mono faint">{{ t.page_path or "" }}</span></div>
+      <div class="meta"><span class="badge {{ kind_badge.get(t.kind, 'badge-gray') }}">{{ t.kind }}</span>{% if t.status == 'filing' %}<span class="badge badge-indigo">filing…</span>{% endif %}<span class="mono faint">{{ t.page_path or "" }}</span></div>
       <div class="tt">{{ t.title }}</div>
       <div class="meta"><span>#{{ t.id }}</span><span>·</span><span>{{ t.submitted_by_email.split("@")[0] }}</span><span>·</span><span>{{ t.created_at.strftime("%b %d") }}</span>{% if t.github_issue_url %}<span style="margin-left:auto;color:var(--accent);display:inline-flex;align-items:center;gap:4px">{{ icon("github") }} issue</span>{% endif %}</div>
     </a>

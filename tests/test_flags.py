@@ -63,7 +63,7 @@ def test_prod_toggle_creates_pending_approval_without_changing_flag(login, db, f
     assert _flag(db, flags["prod"]).enabled is False
     pending = _pending(db, flags["prod"])
     assert len(pending) == 1
-    assert pending[0].payload == {"enabled": True}
+    assert {k: v for k, v in pending[0].payload.items() if k != "expected"} == {"enabled": True}
     assert pending[0].required_permission == "flags.approve"
 
 
@@ -185,7 +185,7 @@ def test_promote_to_prod_requires_approval(login, db, flags):
     assert prod.enabled is False and prod.rollout_percent == 25
 
     approval = _pending(db, flags["prod"])[0]
-    assert approval.payload == {"enabled": True, "rollout_percent": 100}
+    assert {k: v for k, v in approval.payload.items() if k != "expected"} == {"enabled": True, "rollout_percent": 100}
     login("april").post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
     prod = _flag(db, flags["prod"])
     assert prod.enabled is True and prod.rollout_percent == 100
