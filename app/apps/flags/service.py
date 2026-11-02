@@ -73,11 +73,18 @@ def apply_change(db: Session, flag: Flag, payload: dict, actor: User, reason: st
 
 
 def _applier(db: Session, approval: Approval, actor: User) -> None:
-    flag = db.get(Flag, int(approval.entity_id))
-    if flag is None:
-        raise approvals.ApprovalError("flag no longer exists")
+    payload = dict(approval.payload)
+    spec = payload.pop("create", None)
     reason = f"approval #{approval.id}" if approval.required_permission else None
-    apply_change(db, flag, approval.payload, actor, reason=reason)
+    if spec:
+        if db.scalar(select(Flag.id).where(Flag.key == spec["key"], Flag.environment == spec["environment"])):
+            raise approvals.ApprovalError(f"{spec['key']} already exists in {spec['environment']}")
+        flag = create_flag(db, actor, spec["key"], spec["description"], spec["owner_team"], spec["environment"], False, 0)
+    else:
+        flag = db.get(Flag, int(approval.entity_id))
+        if flag is None:
+            raise approvals.ApprovalError("flag no longer exists")
+    apply_change(db, flag, payload, actor, reason=reason)
 
 
 def register_appliers() -> None:
@@ -111,12 +118,9 @@ def create_flag(db: Session, actor: User, key: str, description: str, owner_team
 
 def create_key(db: Session, actor: User, key: str, description: str, owner_team: str, enabled: bool,
                rollout_percent) -> Flag:
-    """A flag starts life in the earliest environment and is promoted forward; later envs start dark."""
-    first, *later = ENVIRONMENTS
-    flag = create_flag(db, actor, key, description, owner_team, first, enabled, rollout_percent)
-    for env in later:
-        create_flag(db, actor, key, description, owner_team, env, False, 0)
-    return flag
+    """A flag starts life in the earliest environment only; later environments appear when it is promoted there,
+    so SDK snapshots for staging/prod never see a key before promotion."""
+    return create_flag(db, actor, key, description, owner_team, ENVIRONMENTS[0], enabled, rollout_percent)
 
 
 def next_environment(env: str) -> str | None:
@@ -144,6 +148,15 @@ def promote(db: Session, actor: User, key: str, to_env: str) -> tuple[Flag, Appr
     if source is None:
         raise FlagError(f"{key} does not exist in {from_env}")
     target = db.scalar(select(Flag).where(Flag.key == key, Flag.environment == to_env))
+    if target is None and to_env == "prod":
+        # Don't create the prod row until a checker approves: the applier creates it (see _applier).
+        state = f"{'ON' if source.enabled else 'OFF'} at {source.rollout_percent}%"
+        summary = f"Promote {key} from {from_env} to {to_env} ({state})"
+        payload = {**source.state(), "create": {"key": key, "description": source.description,
+                                                 "owner_team": source.owner_team, "environment": to_env}}
+        approval = approvals.request(db, actor, CHANGE_KIND, "flag", f"new:{key}:{to_env}", payload, summary,
+                                     required_permission="flags.approve")
+        return source, approval
     if target is None:
         target = create_flag(db, actor, key, source.description, source.owner_team, to_env, False, 0)
     if target.state() == source.state():
@@ -154,6 +167,17 @@ def promote(db: Session, actor: User, key: str, to_env: str) -> tuple[Flag, Appr
     summary = f"Promote {key} from {from_env} to {to_env} ({state})"
     approval = request_change(db, actor, target, source.state(), summary)
     return target, approval
+
+
+def pending_new(db: Session) -> dict[tuple[str, str], Approval]:
+    """Pending promotions that will create a row (keyed by (key, env)); they have no flag id yet."""
+    q = select(Approval).where(Approval.kind == CHANGE_KIND, Approval.status == "pending",
+                               Approval.entity_id.like("new:%"))
+    out = {}
+    for a in db.scalars(q):
+        _, key, env = a.entity_id.split(":", 2)
+        out[(key, env)] = a
+    return out
 
 
 def pending_by_flag(db: Session, flag_ids: list[int] | None = None) -> dict[int, list[Approval]]:

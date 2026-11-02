@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.platform import events
+from app.platform.audit import audit
 from app.platform.auth import require
 from app.platform.db import get_db
 from app.platform.models import AuditEvent, User
@@ -44,19 +45,36 @@ def _get(db: Session, case_id: int) -> KycCase:
     return case
 
 
+PAGE_SIZE = 25
+MAX_WEBHOOK_BYTES = 64 * 1024
+
+
 @router.get("")
-def queue(request: Request, db: Db, user: Reader, status: str = "pending", risk: str = ""):
+def queue(request: Request, db: Db, user: Reader, status: str = "pending", risk: str = "", q: str = "", page: int = 1):
     status = status if status in STATUSES or status == "all" else "pending"
     stmt = select(KycCase)
     if status != "all":
         stmt = stmt.where(KycCase.status == status)
     if risk in RISK_BADGES:
         stmt = stmt.where(KycCase.risk_band == risk)
-    order = (KycCase.risk_score.desc(), KycCase.created_at.asc()) if status == "pending" else (KycCase.decided_at.desc(),)
-    cases = db.scalars(stmt.order_by(*order).limit(200)).all()
+    q = q.strip()
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(KycCase.applicant_email.ilike(like) | KycCase.applicant_name.ilike(like))
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(max(1, page), pages)
+    order = (KycCase.risk_score.desc(), KycCase.created_at.asc(), KycCase.id.asc()) if status == "pending" \
+        else (KycCase.decided_at.desc(), KycCase.id.desc())
+    cases = db.scalars(stmt.order_by(*order).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
+
+    def page_url(n: int) -> str:
+        return "/kyc?" + urlencode({k: v for k, v in {"status": status, "risk": risk, "q": q, "page": n}.items() if v})
+
     counts = {s: db.scalar(select(func.count()).select_from(KycCase).where(KycCase.status == s)) or 0 for s in STATUSES}
-    return render(request, "kyc/queue.html", user, **_ctx(cases=cases, status=status, risk=risk, counts=counts,
-                                                          stats=service.stats(db)))
+    return render(request, "kyc/queue.html", user, **_ctx(cases=cases, status=status, risk=risk, q=q, counts=counts,
+                                                          stats=service.stats(db), page=page, pages=pages, total=total,
+                                                          page_url=page_url))
 
 
 @router.get("/{case_id}")
@@ -67,13 +85,27 @@ def case_detail(request: Request, case_id: int, db: Db, user: Reader, error: str
         select(AuditEvent).where(AuditEvent.entity_type == "kyc_case", AuditEvent.entity_id == str(case.id))
         .order_by(AuditEvent.id.desc())
     ).all()
-    return render(request, "kyc/case.html", user, **_ctx(case=case, linked=linked, trail=trail, error=error))
+    docs = {k: service.document_url(case, k) for k in service.DOC_KINDS}
+    return render(request, "kyc/case.html", user, **_ctx(case=case, linked=linked, trail=trail, error=error, docs=docs))
+
+
+@router.get("/{case_id}/documents/{kind}")
+def view_document(request: Request, case_id: int, kind: str, exp: int, sig: str, db: Db, user: Reviewer):
+    """Renders the applicant's document through a short-lived signed link and logs who looked at it."""
+    case = _get(db, case_id)
+    if not service.document_link_valid(case, kind, exp, sig):
+        raise HTTPException(status_code=403, detail="document link expired or invalid; reopen the case")
+    audit(db, user, "kyc.document_viewed", "kyc_case", case.id, after={"kind": kind})
+    db.commit()
+    return render(request, "kyc/document.html", user, **_ctx(case=case, kind=kind, expires_at=exp))
 
 
 @router.post("/{case_id}/decide")
 def decide(case_id: int, decision: Annotated[str, Form()], db: Db, user: Reviewer,
            reason: Annotated[str, Form()] = ""):
     case = _get(db, case_id)
+    if decision not in ("approve", "reject"):
+        return _redirect(f"/kyc/{case.id}", error="decision must be approve or reject")
     try:
         service.decide(db, user, case, approve=(decision == "approve"), reason=reason)
     except service.KycError as e:
@@ -89,7 +121,11 @@ def decide(case_id: int, decision: Annotated[str, Form()], db: Db, user: Reviewe
 @router.post("/webhook/vendor")
 async def vendor_webhook(request: Request, db: Db):
     """Signed webhook from the KYC vendor. No user session: the HMAC signature is the authentication."""
+    if int(request.headers.get("content-length") or 0) > MAX_WEBHOOK_BYTES:
+        raise HTTPException(status_code=413, detail="payload too large")
     body = await request.body()
+    if len(body) > MAX_WEBHOOK_BYTES:
+        raise HTTPException(status_code=413, detail="payload too large")
     if not service.verify_signature(body, request.headers.get(service.SIGNATURE_HEADER)):
         raise HTTPException(status_code=401, detail="invalid signature")
     try:

@@ -39,14 +39,14 @@
       {% endif %}
       <div class="sub" style="margin-top:10px">Last change {{ f.updated_at.strftime('%b %d, %H:%M') if f.updated_at else '—' }} · {{ (f.updated_by_email or '').split('@')[0] }}</div>
       {% else %}
-      <div class="empty" style="padding:18px 0"><div class="ic">{{ icon("flag") }}</div><div class="t">Not in {{ env }} yet</div><div class="small">Promote from {{ environments[loop.index0 - 1] }} to create it.</div></div>
+      <div class="empty" style="padding:18px 0"><div class="ic">{{ icon("flag") }}</div><div class="t">Not in {{ env }} yet</div><div class="small">{% if pending_new.get(env) %}<span class="badge badge-amber">Promotion pending approval</span>{% else %}Promote from {{ environments[loop.index0 - 1] }} to create it.{% endif %}</div></div>
       {% endif %}
     </div>
   </div>
   {% if not loop.last %}
   {% set nxt = environments[loop.index] %}{% set tgt = stages.get(nxt) %}
   <div class="stage-arrow">
-    {% if 'flags.write' in perms and f and (not tgt or tgt.state() != f.state()) and not (tgt and pending.get(tgt.id)) %}
+    {% if 'flags.write' in perms and f and (not tgt or tgt.state() != f.state()) and not (tgt and pending.get(tgt.id)) and not pending_new.get(nxt) %}
     <form method="post" action="/flags/promote">
       <input type="hidden" name="key" value="{{ flag.key }}"><input type="hidden" name="to_env" value="{{ nxt }}">
       <button class="btn btn-sm promote" type="submit" title="Copy {{ env }} state to {{ nxt }}{% if nxt == 'prod' %} (needs approval){% endif %}">Promote {{ icon("arrow-right") }}</button>

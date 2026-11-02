@@ -90,6 +90,7 @@ def _tx_page(request: Request, db: Session, user: User, tx: Transaction, error: 
     resp = render(request, "refunds/tx_detail.html", user, **_ctx(
         tx=tx, refunds=tx.refunds, available=service.available_cents(db, tx),
         reserved=service.reserved_cents(db, tx), kyc_hint=service.kyc_hint(db, tx.customer_email),
+        kyc_link=service.kyc_case_link(db, tx.customer_email),
         reason_codes=REASON_CODES, idempotency_key=(form or {}).get("idempotency_key") or str(uuid.uuid4()),
         form=form or {}, error=error, approve_threshold=service.APPROVE_THRESHOLD_CENTS,
         large_threshold=service.LARGE_THRESHOLD_CENTS,

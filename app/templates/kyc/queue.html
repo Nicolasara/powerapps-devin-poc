@@ -30,6 +30,7 @@
       <a href="/kyc?status=rejected" class="{{ 'on' if status == 'rejected' }}">Rejected <span class="n">{{ counts.rejected }}</span></a>
       <a href="/kyc?status=all" class="{{ 'on' if status == 'all' }}">All</a>
     </div>
+    <form class="inline" method="get" action="/kyc"><input type="hidden" name="status" value="{{ status }}"><div class="input-icon">{{ icon("search") }}<input type="search" name="q" value="{{ q }}" placeholder="Search applicant" style="width:220px;height:30px"></div></form>
     <div class="seg">
       <a href="/kyc?status={{ status }}" class="{{ 'on' if not risk }}">Any risk</a>
       {% for r in ['high', 'medium', 'low'] %}<a href="/kyc?status={{ status }}&risk={{ r }}" class="{{ 'on' if risk == r }}">{{ r }}</a>{% endfor %}
@@ -53,6 +54,12 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if pages > 1 %}
+  <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:none">
+    <span class="small muted">Page {{ page }} of {{ pages }} · {{ total }} cases</span>
+    <span style="display:flex;gap:6px">{% if page > 1 %}<a class="btn btn-sm" href="{{ page_url(page - 1) }}">{{ icon("arrow-left") }} Previous</a>{% endif %}{% if page < pages %}<a class="btn btn-sm" href="{{ page_url(page + 1) }}">Next {{ icon("arrow-right") }}</a>{% endif %}</span>
+  </div>
+  {% endif %}
   {% else %}{{ empty("Nothing to review", "New cases appear here as the vendor's webhooks arrive.", "shield") }}{% endif %}
   </div>
 </div>

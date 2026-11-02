@@ -190,15 +190,30 @@ def test_promote_to_prod_requires_approval(login, db, flags):
     assert prod.enabled is True and prod.rollout_percent == 100
 
 
-def test_new_flag_is_created_dark_in_later_environments(login, db):
+def test_new_flag_exists_only_in_dev_until_promoted(login, db):
     oscar = login("oscar")
     resp = oscar.post("/flags", data={"key": "new_thing", "description": "x", "owner_team": "t", "enabled": "true",
                                       "rollout_percent": "50"}, follow_redirects=False)
     assert resp.status_code == 303
     rows = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == "new_thing"))}
-    assert set(rows) == {"dev", "staging", "prod"}
+    assert set(rows) == {"dev"}
     assert rows["dev"].state() == {"enabled": True, "rollout_percent": 50}
-    assert rows["prod"].state() == {"enabled": False, "rollout_percent": 0}
+    anon_snapshot = oscar.get("/flags/api/snapshot", params={"environment": "prod"}).json()["flags"]
+    assert "new_thing" not in anon_snapshot
+
+
+def test_promote_to_missing_prod_row_waits_for_approval(login, db):
+    oscar = login("oscar")
+    oscar.post("/flags", data={"key": "lazy", "enabled": "true", "rollout_percent": "100"}, follow_redirects=False)
+    oscar.post("/flags/promote", data={"key": "lazy", "to_env": "staging"}, follow_redirects=False)
+    resp = oscar.post("/flags/promote", data={"key": "lazy", "to_env": "prod"}, follow_redirects=False)
+    assert "approval" in _query(resp)["notice"][0]
+    assert db.scalar(select(Flag).where(Flag.key == "lazy", Flag.environment == "prod")) is None
+    assert "lazy" not in oscar.get("/flags/api/snapshot", params={"environment": "prod"}).json()["flags"]
+    approval = db.scalar(select(Approval).where(Approval.entity_id == "new:lazy:prod", Approval.status == "pending"))
+    login("april").post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
+    prod = db.scalar(select(Flag).where(Flag.key == "lazy", Flag.environment == "prod"))
+    assert prod is not None and prod.state() == {"enabled": True, "rollout_percent": 100}
 
 
 def test_switching_on_a_dark_flag_goes_live_at_100(login, db):

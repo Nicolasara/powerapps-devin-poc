@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.platform import events
 from app.platform.audit import audit
-from app.platform.auth import current_user
+from app.platform.auth import current_user, require
 from app.platform.db import get_db
 from app.platform.models import User
 from app.web import render
@@ -89,7 +89,7 @@ def detail(ticket_id: int, request: Request, db: Session = Depends(get_db), user
 
 @router.post("/{ticket_id}/mark-filed")
 def mark_filed(ticket_id: int, github_issue_url: str = Form(...), db: Session = Depends(get_db),
-               user: User = Depends(current_user)):
+               user: User = Depends(require("admin"))):
     t = _get(db, ticket_id)
     url = github_issue_url.strip()
     if not url.startswith(("https://", "http://")):

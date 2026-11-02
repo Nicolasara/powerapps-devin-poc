@@ -12,12 +12,12 @@ from app.platform.models import Approval
 PAGES = [
     "/", "/flags", "/flags?environment=prod", "/flags/{flag}", "/flags/api/snapshot?environment=dev",
     "/refunds", "/refunds?q=chen", "/refunds?page=2", "/refunds/tx/{tx}", "/refunds/requests/{rr}",
-    "/kyc", "/kyc?status=all", "/kyc?status=pending&risk=high", "/kyc/{case}",
     "/approvals", "/audit?page=2", "/audit?entity_type=flag&page=1",
     "/feedback", "/feedback?status=open", "/feedback/new?page=/flags", "/feedback/{ticket}",
     "/audit", "/audit?entity_type=flag", "/notifications", "/login",
 ]
 WRITER_PAGES = ["/flags/new"]
+REVIEWER_PAGES = ["/kyc", "/kyc?status=all", "/kyc?status=pending&risk=high", "/kyc?q=reed", "/kyc/{case}"]
 
 
 @pytest.fixture
@@ -51,6 +51,9 @@ def test_every_page_renders_for_every_role(login, demo, name):
     for page in WRITER_PAGES:
         resp = client.get(page.format(**demo), headers={"accept": "text/html"})
         assert resp.status_code == (403 if name == "alice" else 200), (name, page, resp.status_code)
+    for page in REVIEWER_PAGES:
+        resp = client.get(page.format(**demo), headers={"accept": "text/html"})
+        assert resp.status_code == (200 if name in ("april", "adam") else 403), (name, page, resp.status_code)
 
 
 def test_feedback_link_is_in_the_footer(login, demo):
