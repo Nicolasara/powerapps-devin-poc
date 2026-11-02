@@ -62,10 +62,11 @@ def list_flags(request: Request, user: Reader, db: DB, environment: str | None =
     if env:
         q = q.where(Flag.environment == env)
     flags = db.scalars(q).all()
-    pending = service.pending_by_flag(db, [f.id for f in flags])
     rows = service.by_key(db)
     if env:
         rows = [r for r in rows if r["envs"].get(env)]
+    # Every environment is shown on each row, so pending must cover all of them, not just the filtered env.
+    pending = service.pending_by_flag(db, [f.id for r in rows for f in r["envs"].values() if f])
     return render(request, "flags/list.html", user, flags=flags, rows=rows, environment=env,
                   environments=ENVIRONMENTS, pending=pending, notice=notice)
 
@@ -128,7 +129,8 @@ def toggle_flag(flag_id: int, user: Writer, db: DB):
     flag = _get_flag(db, flag_id)
     if flag.environment == "prod" and service.pending_by_flag(db, [flag.id]):
         return _redirect("/flags", f"{flag.key} in prod already has a change awaiting approval.")
-    target = not flag.enabled
+    live = flag.enabled and flag.rollout_percent > 0  # same notion of "on" the switch displays
+    target = not live
     payload: dict = {"enabled": target}
     if target and flag.rollout_percent == 0:
         payload["rollout_percent"] = 100  # a switch flipped on means "live", not "on at 0%"
@@ -147,7 +149,7 @@ def set_rollout(flag_id: int, rollout_percent: Annotated[str, Form()], user: Wri
         pct = service.validate_rollout(rollout_percent)
     except service.FlagError as e:
         return _redirect(f"/flags/{flag.id}", str(e))
-    if pct == flag.rollout_percent:
+    if pct == flag.rollout_percent and flag.enabled == (pct > 0):
         return _redirect(f"/flags/{flag.id}", f"Rollout is already {pct}%.")
     if flag.environment == "prod" and service.pending_by_flag(db, [flag.id]):
         return _redirect(f"/flags/{flag.id}", "This flag already has a change awaiting approval.")
