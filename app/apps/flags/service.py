@@ -11,7 +11,7 @@ from app.platform.audit import audit
 from app.platform.models import Approval, User, utcnow
 from app.platform.notify import get_notifier
 
-from .models import ENVIRONMENTS, Flag
+from .models import ENVIRONMENTS, Flag, FlagPlan
 
 CHANGE_KIND = "flag.change"
 EVENT_TYPE = "flag.changed.v1"
@@ -198,3 +198,158 @@ def snapshot(db: Session, environment: str) -> tuple[dict, str]:
     body = {f.key: {"enabled": f.enabled, "rollout_percent": f.rollout_percent} for f in flags}
     digest = hashlib.sha256(json.dumps({"environment": environment, "flags": body}, sort_keys=True).encode()).hexdigest()
     return {"environment": environment, "flags": body, "version": digest[:12]}, f'"{digest}"'
+
+
+# ---------------------------------------------------------------- rollout plans
+
+DEFAULT_PLAN_STEPS = [
+    {"environment": "dev", "rollout_percent": 100},
+    {"environment": "staging", "rollout_percent": 100},
+    {"environment": "prod", "rollout_percent": 10},
+    {"environment": "prod", "rollout_percent": 50},
+    {"environment": "prod", "rollout_percent": 100},
+]
+
+
+def validate_steps(steps: list[dict]) -> list[dict]:
+    """Steps must walk forward through the environments and only ever increase rollout within one."""
+    if not steps:
+        raise FlagError("a plan needs at least one step")
+    out: list[dict] = []
+    for i, raw in enumerate(steps, start=1):
+        try:
+            env = validate_environment(str(raw["environment"]))
+            pct = validate_rollout(raw["rollout_percent"])
+        except (KeyError, TypeError):
+            raise FlagError(f"step {i} must have an environment and a rollout percent") from None
+        if pct == 0:
+            raise FlagError(f"step {i}: a step must roll out to more than 0%")
+        if out:
+            prev = out[-1]
+            if ENVIRONMENTS.index(env) < ENVIRONMENTS.index(prev["environment"]):
+                raise FlagError(f"step {i}: {env} comes before {prev['environment']}; plans only move forward")
+            if env == prev["environment"] and pct <= prev["rollout_percent"]:
+                raise FlagError(f"step {i}: {env} must increase past {prev['rollout_percent']}%")
+        out.append({"environment": env, "rollout_percent": pct})
+    return out
+
+
+def parse_plan(text: str) -> list[dict]:
+    """'dev 100 → staging 100 → prod 10 → prod 50 → prod 100' (also accepts , > : @ as separators)."""
+    tokens = [t.strip() for t in re.split(r"(?:→|->|>|,|;|\n)+", text or "") if t.strip()]
+    steps = []
+    for tok in tokens:
+        m = re.fullmatch(r"([a-zA-Z]+)\s*[:@ ]\s*(\d+)\s*%?", tok)
+        if not m:
+            raise FlagError(f"could not read step '{tok}'; write it as 'prod 50'")
+        steps.append({"environment": m.group(1).lower(), "rollout_percent": int(m.group(2))})
+    return validate_steps(steps)
+
+
+def format_plan(steps: list[dict]) -> str:
+    return " → ".join(f"{s['environment']} {s['rollout_percent']}" for s in steps)
+
+
+def get_plan(db: Session, key: str) -> list[dict]:
+    row = db.scalar(select(FlagPlan).where(FlagPlan.key == key))
+    return list(row.steps) if row and row.steps else [dict(s) for s in DEFAULT_PLAN_STEPS]
+
+
+def set_plan(db: Session, actor: User, key: str, steps: list[dict]) -> FlagPlan:
+    steps = validate_steps(steps)
+    if not db.scalar(select(Flag.id).where(Flag.key == key)):
+        raise FlagError(f"{key} does not exist")
+    row = db.scalar(select(FlagPlan).where(FlagPlan.key == key))
+    before = {"plan": format_plan(row.steps if row and row.steps else DEFAULT_PLAN_STEPS)}
+    if row is None:
+        row = FlagPlan(key=key)
+        db.add(row)
+    row.steps = steps
+    row.updated_at = utcnow()
+    row.updated_by_email = actor.email
+    db.flush()
+    audit(db, actor, "flag.plan_updated", "flag_plan", key, before=before, after={"plan": format_plan(steps)})
+    return row
+
+
+def _step_reached(stages: dict[str, Flag], step: dict) -> bool:
+    f = stages.get(step["environment"])
+    return bool(f and f.enabled and f.rollout_percent >= step["rollout_percent"])
+
+
+def plan_state(db: Session, key: str, stages: dict[str, Flag] | None = None) -> dict:
+    """Where a key sits in its plan: position = number of leading steps already reached."""
+    if stages is None:
+        stages = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == key))}
+    steps = get_plan(db, key)
+    position = 0
+    for step in steps:
+        if not _step_reached(stages, step):
+            break
+        position += 1
+    current = steps[position - 1] if position else None
+    nxt = steps[position] if position < len(steps) else None
+    pending_next = False
+    if nxt:
+        target = stages.get(nxt["environment"])
+        pending_next = bool(target and pending_by_flag(db, [target.id])) or (nxt["environment"], ) in {
+            (k_env[1],) for k_env in pending_new(db) if k_env[0] == key and k_env[1] == nxt["environment"]}
+    return {"steps": steps, "position": position, "total": len(steps), "current": current, "next": nxt,
+            "pending_next": pending_next, "text": format_plan(steps)}
+
+
+def roll_forward(db: Session, actor: User, key: str) -> tuple[dict, Approval | None]:
+    """Push the flag to the next step of its plan. Prod steps go through approval; the rest apply now."""
+    stages = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == key))}
+    if not stages:
+        raise FlagError(f"{key} does not exist")
+    state = plan_state(db, key, stages)
+    step = state["next"]
+    if step is None:
+        raise FlagError(f"{key} is already at the last step of its plan")
+    env, pct = step["environment"], step["rollout_percent"]
+    payload = {"enabled": True, "rollout_percent": pct}
+    summary = f"Roll {key} forward to {env} {pct}% (step {state['position'] + 1} of {state['total']})"
+    target = stages.get(env)
+    source = next((stages[e] for e in reversed(ENVIRONMENTS) if e in stages), None)
+    if env == "prod":
+        if target is None:
+            if db.scalar(select(Approval.id).where(Approval.kind == CHANGE_KIND, Approval.status == "pending",
+                                                   Approval.entity_id == f"new:{key}:{env}")):
+                raise FlagError(f"{key} already has a prod step awaiting approval")
+            payload["create"] = {"key": key, "description": source.description, "owner_team": source.owner_team,
+                                 "environment": env}
+            approval = approvals.request(db, actor, CHANGE_KIND, "flag", f"new:{key}:{env}", payload, summary,
+                                         required_permission="flags.approve")
+            return step, approval
+        if pending_by_flag(db, [target.id]):
+            raise FlagError(f"{key} in prod already has a change awaiting approval")
+        return step, request_change(db, actor, target, payload, summary)
+    if target is None:
+        target = create_flag(db, actor, key, source.description, source.owner_team, env, False, 0)
+    apply_change(db, target, payload, actor, reason=summary)
+    return step, None
+
+
+def roll_back(db: Session, actor: User, key: str) -> dict:
+    """Step back one plan step. Rolling back reduces exposure, so it applies immediately in every stage,
+    including prod (the break-glass path); it is audited and announced like any other change."""
+    stages = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == key))}
+    if not stages:
+        raise FlagError(f"{key} does not exist")
+    state = plan_state(db, key, stages)
+    if state["position"] == 0:
+        raise FlagError(f"{key} is at the start of its plan; nothing to roll back")
+    idx = state["position"] - 1
+    cur = state["steps"][idx]
+    env = cur["environment"]
+    prev_same_env = next((s for s in reversed(state["steps"][:idx]) if s["environment"] == env), None)
+    if prev_same_env:
+        payload = {"enabled": True, "rollout_percent": prev_same_env["rollout_percent"]}
+        target_text = f"{env} {prev_same_env['rollout_percent']}%"
+    else:
+        payload = {"enabled": False, "rollout_percent": 0}
+        target_text = f"{env} off"
+    flag = stages[env]
+    apply_change(db, flag, payload, actor, reason=f"Roll {key} back to {target_text} (from step {idx + 1} of {state['total']})")
+    return {"step": cur, "target": target_text, "flag": flag}

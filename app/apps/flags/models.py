@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.platform.db import Base
@@ -27,3 +27,16 @@ class Flag(Base):
 
     def state(self) -> dict:
         return {"enabled": self.enabled, "rollout_percent": self.rollout_percent}
+
+
+class FlagPlan(Base):
+    """The rollout plan for a key: the ordered steps a flag is pushed through (environment + rollout %).
+    Keys without a row use DEFAULT_PLAN_STEPS."""
+
+    __tablename__ = "flag_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by_email: Mapped[str] = mapped_column(String(200), default="system")

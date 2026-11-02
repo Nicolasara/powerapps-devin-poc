@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, empty %}
-{% from "flags/_macros.html" import env_badge, state_badge, state_text, rollout_bar, switch %}
+{% from "flags/_macros.html" import env_badge, state_badge, state_text, rollout_bar, switch, stepper, plan_summary, roll_buttons %}
 {% block title %}{{ flag.key }}{% endblock %}
 {% block crumbs %}<span class="sep">/</span><a href="/flags">Feature flags</a><span class="sep">/</span><span class="cur">{{ flag.key }}</span>{% endblock %}
 {% block content %}
@@ -12,6 +12,27 @@
   <div class="actions"><a class="btn btn-ghost" href="/flags">{{ icon("arrow-left") }} All flags</a></div>
 </div>
 
+<div class="card plan-card">
+  <div class="card-h">
+    <div><h2>Rollout plan</h2><p>{{ plan_summary(plan) }}{% if plan.next %} · next: <strong>{{ plan.next.environment }} {{ plan.next.rollout_percent }}%</strong>{% if plan.next.environment == 'prod' %} (needs approval){% endif %}{% endif %}</p></div>
+    {% if 'flags.write' in perms %}{{ roll_buttons(flag.key, plan, back_to="/flags/" ~ flag.id, size="") }}{% endif %}
+  </div>
+  <div class="card-b">
+    {{ stepper(plan) }}
+    {% if plan.pending_next %}<div class="alert alert-warn" style="margin:14px 0 0;padding:8px 10px;font-size:12.5px">{{ icon("clock") }}<div>The next step is awaiting approval. <a href="/approvals">Open approvals</a></div></div>{% endif %}
+    {% if 'flags.write' in perms %}
+    <form method="post" action="/flags/plan/{{ flag.key }}" class="plan-edit">
+      <input type="hidden" name="back_to" value="/flags/{{ flag.id }}">
+      <label for="plan">Plan</label>
+      <input id="plan" name="plan" value="{{ plan.text }}" class="mono" aria-label="Rollout plan steps">
+      <button class="btn btn-sm" type="submit">Save plan</button>
+      <span class="hint" style="margin:0;align-self:center">environment and percent per step, e.g. <code>prod 25</code></span>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<h2 class="section-title">Stages <span class="muted" style="font-weight:500">· manual overrides</span></h2>
 <div class="stages">
 {% for env in environments %}
   {% set f = stages.get(env) %}
@@ -43,17 +64,7 @@
       {% endif %}
     </div>
   </div>
-  {% if not loop.last %}
-  {% set nxt = environments[loop.index] %}{% set tgt = stages.get(nxt) %}
-  <div class="stage-arrow">
-    {% if 'flags.write' in perms and f and (not tgt or tgt.state() != f.state()) and not (tgt and pending.get(tgt.id)) and not pending_new.get(nxt) %}
-    <form method="post" action="/flags/promote">
-      <input type="hidden" name="key" value="{{ flag.key }}"><input type="hidden" name="to_env" value="{{ nxt }}">
-      <button class="btn btn-sm promote" type="submit" title="Copy {{ env }} state to {{ nxt }}{% if nxt == 'prod' %} (needs approval){% endif %}">Promote {{ icon("arrow-right") }}</button>
-    </form>
-    {% else %}<span class="faint">{{ icon("chevron-right") }}</span>{% endif %}
-  </div>
-  {% endif %}
+  {% if not loop.last %}<div class="stage-arrow"><span class="faint">{{ icon("chevron-right") }}</span></div>{% endif %}
 {% endfor %}
 </div>
 
@@ -85,7 +96,7 @@
         {% for env in environments %}<tr><th>{{ env }} snapshot</th><td><a href="/flags/api/snapshot?environment={{ env }}" target="_blank" rel="noopener" class="mono">/flags/api/snapshot?environment={{ env }}</a></td></tr>{% endfor %}
         <tr><th>Caching</th><td>ETag + <code>If-None-Match</code>, 304 when unchanged</td></tr>
         <tr><th>Events</th><td><code>flag.changed.v1</code> on every applied change</td></tr>
-        <tr><th>Promotion</th><td>Copies the previous stage's state forward; prod needs <code>flags.approve</code></td></tr>
+        <tr><th>Plan</th><td>Roll forward takes the next plan step; prod steps need <code>flags.approve</code>; roll back applies immediately</td></tr>
       </table>
     </div>
   </div>
@@ -93,14 +104,17 @@
 {% endblock %}
 {% block head %}
 <style>
+.plan-card .card-h{align-items:center}
+.plan-edit{display:flex;gap:8px;margin-top:18px;align-items:center}
+.plan-edit label{font-size:12px;color:var(--muted)}
+.plan-edit input{flex:1;min-width:260px;height:32px}
+.section-title{font-size:14px;margin:18px 0 10px}
 .stages{display:grid;grid-template-columns:minmax(0,1fr) 110px minmax(0,1fr) 110px minmax(0,1fr);gap:0;align-items:stretch}
 .stages .card{margin:0}
 .stage-arrow{display:grid;place-items:center;padding:0 8px}
 .stage-state .val{font-size:22px;font-weight:650;letter-spacing:-.02em;margin-bottom:8px}
 .stage-rollout{display:flex;gap:8px;margin-top:14px}
 .stage-rollout input{width:80px;height:30px}
-.btn.promote{color:var(--accent-2);border-color:#c7d2fe;background:var(--accent-soft)}
-.btn.promote:hover{background:#e0e7ff}
 @media (max-width:1100px){.stages{grid-template-columns:1fr}.stage-arrow{padding:8px 0;transform:rotate(90deg)}}
 </style>
 {% endblock %}

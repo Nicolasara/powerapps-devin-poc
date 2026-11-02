@@ -27,9 +27,11 @@ Apps don't reimplement the controls a regulated business needs. They share one f
 Each app lives in `app/apps/<name>/`, with its own models, routes and templates. Apps never read each other's
 tables. They communicate through events.
 
-- **Feature flags** (`/flags`): one row per flag with dev → staging → prod columns. A flag is created in dev and
-  **promoted** forward; promote copies the previous environment's state. Non-prod changes apply immediately.
-  Prod changes (toggle, rollout or promotion) go through approval by someone holding `flags.approve`. Every change is audited, emits
+- **Feature flags** (`/flags`): one row per flag with dev → staging → prod columns and a **rollout plan** per key
+  (default `dev 100 → staging 100 → prod 10 → prod 50 → prod 100`, editable on the flag page). **Roll forward**
+  takes the next step; **roll back** steps down and applies immediately everywhere, prod included, because reducing
+  exposure is the safe direction. Stage toggles and rollout overrides remain on the flag page. Non-prod changes apply
+  immediately; prod steps and changes go through approval by someone holding `flags.approve`. Every change is audited, emits
   `flag.changed.v1` and posts a notification. Service SDKs poll `GET /flags/api/snapshot?environment=prod`, which
   returns an `ETag` and answers `304 Not Modified` while the snapshot is unchanged.
 - **Refunds** (`/refunds`): look up a charge and request a refund. Refunds under $100 execute immediately.
