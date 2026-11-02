@@ -109,15 +109,18 @@ def promote_flag(key: Annotated[str, Form()], to_env: Annotated[str, Form()], us
 
 @router.get("/{flag_id}")
 def flag_detail(request: Request, flag_id: int, user: Reader, db: DB, notice: str | None = None):
+    """One page per key: every environment is a stage on the same page."""
     flag = _get_flag(db, flag_id)
+    stages = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == flag.key))}
+    ids = [str(f.id) for f in stages.values()]
     history = db.scalars(
-        select(AuditEvent).where(AuditEvent.entity_type == "flag", AuditEvent.entity_id == str(flag.id))
+        select(AuditEvent).where(AuditEvent.entity_type == "flag", AuditEvent.entity_id.in_(ids))
         .order_by(AuditEvent.at.desc(), AuditEvent.id.desc())
     ).all()
-    pending = service.pending_by_flag(db, [flag.id]).get(flag.id, [])
-    siblings = {f.environment: f for f in db.scalars(select(Flag).where(Flag.key == flag.key))}
-    return render(request, "flags/detail.html", user, flag=flag, history=history, pending=pending, notice=notice,
-                  siblings=siblings, environments=ENVIRONMENTS)
+    env_of = {str(f.id): f.environment for f in stages.values()}
+    pending = service.pending_by_flag(db, [f.id for f in stages.values()])
+    return render(request, "flags/detail.html", user, flag=flag, stages=stages, environments=ENVIRONMENTS,
+                  history=history, env_of=env_of, pending=pending, notice=notice)
 
 
 @router.post("/{flag_id}/toggle")
