@@ -213,3 +213,27 @@ def test_zero_rollout_turns_flag_off(login, db, flags):
     login("oscar").post(f"/flags/{flags['dev']}/toggle", follow_redirects=False)  # ON at 100%
     login("oscar").post(f"/flags/{flags['dev']}/rollout", data={"rollout_percent": "0"}, follow_redirects=False)
     assert _flag(db, flags["dev"]).state() == {"enabled": False, "rollout_percent": 0}
+
+
+def test_switch_on_enabled_zero_rollout_flag_goes_live(login, db):
+    odd = Flag(key="odd", environment="dev", enabled=True, rollout_percent=0)  # displays as Off
+    db.add(odd)
+    db.commit()
+    login("oscar").post(f"/flags/{odd.id}/toggle", follow_redirects=False)
+    assert _flag(db, odd.id).state() == {"enabled": True, "rollout_percent": 100}
+
+
+def test_rollout_form_can_relive_a_disabled_flag_at_its_old_percentage(login, db):
+    f = Flag(key="paused", environment="dev", enabled=False, rollout_percent=25)
+    db.add(f)
+    db.commit()
+    resp = login("oscar").post(f"/flags/{f.id}/rollout", data={"rollout_percent": "25"}, follow_redirects=False)
+    assert "already" not in _query(resp)["notice"][0]
+    assert _flag(db, f.id).state() == {"enabled": True, "rollout_percent": 25}
+
+
+def test_filtered_list_still_shows_pending_prod_changes(login, db, flags):
+    oscar = login("oscar")
+    oscar.post(f"/flags/{flags['prod']}/toggle", follow_redirects=False)  # pending approval in prod
+    page = oscar.get("/flags?environment=dev")
+    assert "Pending" in page.text
