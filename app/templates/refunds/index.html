@@ -15,8 +15,8 @@
   <div class="toolbar">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="seg">
-        <a href="/refunds{% if q %}?q={{ q }}{% endif %}" class="{{ 'on' if view == 'transactions' }}">Transactions</a>
-        <a href="/refunds?view=requests{% if q %}&q={{ q }}{% endif %}" class="{{ 'on' if view == 'requests' }}">Refund requests</a>
+        <a href="{{ view_url('transactions') }}" class="{{ 'on' if view == 'transactions' }}">Transactions</a>
+        <a href="{{ view_url('requests') }}" class="{{ 'on' if view == 'requests' }}">Refund requests</a>
       </div>
       <div class="small muted">{{ total }} {{ 'refund request' if view == 'requests' else 'transaction' }}{{ "" if total == 1 else "s" }}{% if q %} matching &ldquo;{{ q }}&rdquo;{% endif %}</div>
     </div>
@@ -24,7 +24,7 @@
       {% if view == 'requests' %}<input type="hidden" name="view" value="requests">{% endif %}
       <div class="input-icon">{{ icon("search") }}<input type="search" name="q" value="{{ q }}" placeholder="Search customer name or email" style="width:300px"></div>
       <button class="btn" type="submit">Search</button>
-      {% if q %}<a class="btn btn-ghost" href="/refunds{% if view == 'requests' %}?view=requests{% endif %}">Clear</a>{% endif %}
+      {% if q %}<a class="btn btn-ghost" href="{{ view_url(view) | replace('?q=', '?') }}">Clear</a>{% endif %}
     </form>
   </div>
   <div class="card-b">

@@ -34,3 +34,8 @@ def test_flags_list_sorts(login):
     oscar.post("/flags", data={"key": "sort_me", "enabled": "true", "rollout_percent": "100"}, follow_redirects=False)
     html = oscar.get("/flags?sort=flag&dir=desc").text
     assert 'href="/flags?sort=flag&amp;dir=asc"' in html
+
+
+def test_refunds_view_tabs_encode_search(login):
+    html = login("oscar").get("/refunds", params={"q": "Smith & Jones"}).text
+    assert 'href="/refunds?view=requests&amp;q=Smith+%26+Jones"' in html
