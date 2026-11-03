@@ -52,7 +52,7 @@
 {% macro roll_buttons(key, plan, back_to="/flags", size="btn-sm") -%}
 <div class="roll">
   <form class="inline" method="post" action="/flags/plan/{{ key }}/back"><input type="hidden" name="back_to" value="{{ back_to }}">
-    <button class="btn {{ size }}" type="submit" {% if plan.position == 0 %}disabled{% endif %} title="Step back one plan step; applies immediately">{{ icon("arrow-left") }} Roll back</button>
+    <button class="btn {{ size }}" type="submit" {% if not plan.can_roll_back %}disabled{% endif %} title="{% if plan.can_roll_back %}Reduce {{ plan.live_env }} one plan step; applies immediately{% else %}Not live in any stage{% endif %}">{{ icon("arrow-left") }} Roll back</button>
   </form>
   {% if plan.next %}
     {% if plan.next.environment == 'prod' %}

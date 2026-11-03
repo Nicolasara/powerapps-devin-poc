@@ -300,8 +300,11 @@ def plan_state(db: Session, key: str, stages: dict[str, Flag] | None = None) -> 
         target = stages.get(nxt["environment"])
         pending_next = bool(target and pending_by_flag(db, [target.id])) or (nxt["environment"], ) in {
             (k_env[1],) for k_env in pending_new(db) if k_env[0] == key and k_env[1] == nxt["environment"]}
+    live_env = next((e for e in reversed(ENVIRONMENTS)
+                     if e in stages and stages[e].enabled and stages[e].rollout_percent > 0), None)
     return {"steps": steps, "position": position, "total": len(steps), "current": current, "next": nxt,
-            "pending_next": pending_next, "text": format_plan(steps)}
+            "pending_next": pending_next, "text": format_plan(steps), "live_env": live_env,
+            "can_roll_back": live_env is not None}
 
 
 def roll_forward(db: Session, actor: User, key: str) -> tuple[dict, Approval | None]:
@@ -340,7 +343,7 @@ def roll_forward(db: Session, actor: User, key: str) -> tuple[dict, Approval | N
 def pending_for_key(db: Session, key: str, stages: dict[str, Flag]) -> list[Approval]:
     ids = [str(f.id) for f in stages.values()]
     q = select(Approval).where(Approval.kind == CHANGE_KIND, Approval.status == "pending",
-                               (Approval.entity_id.in_(ids)) | (Approval.entity_id.like(f"new:{key}:%")))
+                               (Approval.entity_id.in_(ids)) | (Approval.entity_id.in_([f"new:{key}:{e}" for e in ENVIRONMENTS])))
     return list(db.scalars(q.order_by(Approval.id)))
 
 
