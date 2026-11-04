@@ -107,7 +107,8 @@ def test_filing_claims_ticket_so_concurrent_click_cannot_double_file(login, db, 
     FakeIssueTracker.issues.clear()
     location = _create(login("oscar"), "Race me").headers["location"]
     ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
-    db.execute(update(FeedbackTicket).where(FeedbackTicket.id == ticket_id).values(status="filing"))
+    from app.platform.models import utcnow
+    db.execute(update(FeedbackTicket).where(FeedbackTicket.id == ticket_id).values(status="filing", claimed_at=utcnow()))
     db.commit()  # another admin's request is mid-flight
     resp = login("adam").post(f"/feedback/{ticket_id}/file", follow_redirects=False)
     assert "already+being+filed" in resp.headers["location"] and FakeIssueTracker.issues == []
@@ -137,3 +138,28 @@ def test_auto_file_outage_keeps_ticket_open(login, db, monkeypatch):
     ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
     db.expire_all()
     assert db.get(FeedbackTicket, ticket_id).status == "open"
+
+
+def test_stale_filing_claim_can_be_retried_but_fresh_one_cannot(login, db, monkeypatch):
+    from datetime import timedelta
+
+    from app.platform.github import FakeIssueTracker
+    from app.platform.models import utcnow
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    FakeIssueTracker.issues.clear()
+    location = _create(login("oscar"), "Stuck in filing").headers["location"]
+    ticket_id = int(urlparse(location).path.rsplit("/", 1)[-1])
+    db.execute(update(FeedbackTicket).where(FeedbackTicket.id == ticket_id).values(status="filing", claimed_at=utcnow()))
+    db.commit()
+    board = login("adam").get("/feedback").text
+    assert "Stuck in filing" in board and "filing…" in board  # still visible to triage
+    assert "already+being+filed" in login("adam").post(f"/feedback/{ticket_id}/file", follow_redirects=False).headers["location"]
+    db.execute(update(FeedbackTicket).where(FeedbackTicket.id == ticket_id)
+               .values(claimed_at=utcnow() - timedelta(minutes=10)))
+    db.commit()
+    detail = login("adam").get(f"/feedback/{ticket_id}").text
+    assert "Retry GitHub issue" in detail
+    resp = login("adam").post(f"/feedback/{ticket_id}/file", follow_redirects=False)
+    assert "issue+created" in resp.headers["location"] and len(FakeIssueTracker.issues) == 1
+    db.expire_all()
+    assert db.get(FeedbackTicket, ticket_id).status == "filed"

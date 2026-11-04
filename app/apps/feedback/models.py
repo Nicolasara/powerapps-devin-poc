@@ -23,3 +23,4 @@ class FeedbackTicket(Base):
     submitted_by_email: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     github_issue_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

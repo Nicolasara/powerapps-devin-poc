@@ -105,3 +105,87 @@ def test_viewer_cannot_roll(login, db):
     oscar = login("oscar")
     _new(oscar, "plan_g")
     assert login("alice").post("/flags/plan/plan_g/forward", follow_redirects=False).status_code == 403
+
+
+def test_roll_back_works_from_highest_live_stage_even_if_dev_is_off(login, db):
+    oscar = login("oscar")
+    oscar.post("/flags", data={"key": "plan_h", "enabled": "false", "rollout_percent": "0"}, follow_redirects=False)
+    db.add(Flag(key="plan_h", environment="staging", enabled=True, rollout_percent=100, updated_by_email="seed"))
+    db.add(Flag(key="plan_h", environment="prod", enabled=True, rollout_percent=100, updated_by_email="seed"))
+    db.commit()
+    resp = oscar.post("/flags/plan/plan_h/back", follow_redirects=False)
+    assert "rolled+back+to+prod+50" in resp.headers["location"]
+    db.expire_all()
+    assert _flag(db, "plan_h", "prod").rollout_percent == 50
+    for expected in ("prod 10", "prod off", "staging off"):
+        resp = oscar.post("/flags/plan/plan_h/back", follow_redirects=False)
+        assert expected.replace(" ", "+") in resp.headers["location"], expected
+    resp = oscar.post("/flags/plan/plan_h/back", follow_redirects=False)
+    assert "nothing+to+roll+back" in resp.headers["location"]
+
+
+def test_roll_back_withdraws_pending_prod_increase(login, db):
+    oscar, april = login("oscar"), login("april")
+    _new(oscar, "plan_i")
+    oscar.post("/flags/plan/plan_i/forward", follow_redirects=False)
+    db.add(Flag(key="plan_i", environment="prod", enabled=True, rollout_percent=10, updated_by_email="seed"))
+    db.commit()
+    assert "Sent+for+approval" in oscar.post("/flags/plan/plan_i/forward", follow_redirects=False).headers["location"]
+    prod = _flag(db, "plan_i", "prod")
+    approval = db.scalar(select(Approval).where(Approval.entity_id == str(prod.id), Approval.status == "pending"))
+    resp = oscar.post("/flags/plan/plan_i/back", follow_redirects=False)
+    assert "1+pending+approval" in resp.headers["location"]
+    db.expire_all()
+    assert approval.status == "cancelled"
+    assert not _flag(db, "plan_i", "prod").enabled
+    april.post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
+    db.expire_all()
+    assert not _flag(db, "plan_i", "prod").enabled  # a cancelled request cannot be applied
+
+
+def test_stale_prod_request_is_not_applied_on_top_of_a_changed_flag(login, db):
+    oscar, april = login("oscar"), login("april")
+    _new(oscar, "plan_j")
+    db.add(Flag(key="plan_j", environment="prod", enabled=True, rollout_percent=10, updated_by_email="seed"))
+    db.commit()
+    prod = _flag(db, "plan_j", "prod")
+    oscar.post(f"/flags/{prod.id}/rollout", data={"rollout_percent": "50"}, follow_redirects=False)
+    approval = db.scalar(select(Approval).where(Approval.entity_id == str(prod.id), Approval.status == "pending"))
+    prod.enabled, prod.rollout_percent = False, 0  # something else changed prod underneath the request
+    db.commit()
+    resp = april.post(f"/approvals/{approval.id}/decide", data={"decision": "approve"}, follow_redirects=False)
+    assert "changed+since" in resp.headers["location"]
+    db.expire_all()
+    assert not _flag(db, "plan_j", "prod").enabled
+
+
+def test_roll_back_button_enabled_when_only_prod_is_live(login, db):
+    oscar = login("oscar")
+    oscar.post("/flags", data={"key": "plan_k", "enabled": "false", "rollout_percent": "0"}, follow_redirects=False)
+    db.add(Flag(key="plan_k", environment="prod", enabled=True, rollout_percent=100, updated_by_email="seed"))
+    db.commit()
+    import re
+    for url in ("/flags", f"/flags/{_flag(db, 'plan_k', 'dev').id}"):
+        html = oscar.get(url).text
+        form = re.search(r'action="/flags/plan/plan_k/back".*?</form>', html, re.DOTALL).group(0)
+        assert "disabled" not in form, url
+    oscar.post("/flags/plan/plan_k/back", follow_redirects=False)
+    oscar.post("/flags/plan/plan_k/back", follow_redirects=False)
+    oscar.post("/flags/plan/plan_k/back", follow_redirects=False)
+    html = oscar.get("/flags").text
+    form = re.search(r'action="/flags/plan/plan_k/back".*?</form>', html, re.DOTALL).group(0)
+    assert "disabled" in form  # nothing live anywhere
+
+
+def test_roll_back_does_not_withdraw_approvals_of_similar_keys(login, db):
+    oscar = login("oscar")
+    _new(oscar, "a_b")
+    _new(oscar, "axb")
+    for key in ("a_b", "axb"):
+        oscar.post(f"/flags/plan/{key}/forward", follow_redirects=False)  # staging
+        oscar.post(f"/flags/plan/{key}/forward", follow_redirects=False)  # prod 10 -> approval new:<key>:prod
+    assert db.scalar(select(Approval).where(Approval.entity_id == "new:axb:prod")).status == "pending"
+    oscar.post("/flags/plan/a_b/back", follow_redirects=False)
+    db.expire_all()
+    assert db.scalar(select(Approval).where(Approval.entity_id == "new:a_b:prod")).status == "cancelled"
+    assert db.scalar(select(Approval).where(Approval.entity_id == "new:axb:prod")).status == "pending"

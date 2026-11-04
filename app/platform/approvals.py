@@ -56,3 +56,15 @@ def decide(db: Session, actor: User, approval: Approval, approve: bool, reason: 
     if approve:
         _appliers[approval.kind](db, approval, actor)
     return approval
+
+
+def cancel(db: Session, actor: User | None, approval: Approval, reason: str) -> Approval:
+    """Withdraw a pending request because the world moved on (e.g. the flag was rolled back). Audited like a decision."""
+    if approval.status != "pending":
+        raise ApprovalError("already decided")
+    approval.status = "cancelled"
+    approval.decided_by = actor.id if actor else None
+    approval.decided_at = utcnow()
+    approval.decision_reason = reason
+    audit(db, actor, "approval.cancelled", "approval", approval.id, after={"summary": approval.summary}, reason=reason)
+    return approval
