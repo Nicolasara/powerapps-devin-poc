@@ -1,18 +1,13 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "feedback/_fields.html" import feedback_fields %}
 {% block title %}Send feedback{% endblock %}
 {% block crumbs %}<span class="sep">/</span><a href="/feedback">Feedback</a><span class="sep">/</span><span class="cur">New</span>{% endblock %}
 {% block content %}
 <div class="ph"><div><h1>Report friction</h1><p>Something slow, confusing or one click too many? Say it here. Small things are welcome; they're the changes that never used to get a ticket.</p></div></div>
 <div class="card" style="max-width:680px"><div class="card-b">
   <form method="post" action="/feedback">
-    <div class="field"><span class="label">What kind of feedback?</span>
-      <div class="radio-cards">
-        {% for k in kinds %}<label><input type="radio" name="kind" value="{{ k }}" {% if loop.first %}checked{% endif %}> {{ {'bug':'Bug','friction':'Friction','idea':'Idea'}.get(k, k | capitalize) }}</label>{% endfor %}
-      </div></div>
-    <div class="field"><label for="title">Title</label><input type="text" id="title" name="title" required maxlength="300" placeholder="What's getting in your way?" autofocus></div>
-    <div class="field"><label for="body">Details</label><textarea id="body" name="body" placeholder="What were you trying to do, and what happened instead?"></textarea></div>
-    <div class="field"><label for="page_path">Page</label><input type="text" id="page_path" name="page_path" value="{{ page }}" placeholder="/refunds" class="mono"><div class="hint">Pre-filled from where you clicked Feedback.</div></div>
+    {{ feedback_fields(kinds, page, autofocus=true) }}
     <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:6px">
       <span class="small muted">Submitting as {{ user.name }} ({{ user.role }})</span>
       <span style="display:flex;gap:8px"><a class="btn" href="{{ page or '/feedback' }}">Cancel</a><button class="btn btn-primary" type="submit">{{ icon("check") }} Submit</button></span>

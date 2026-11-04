@@ -1,0 +1,9 @@
+{% macro feedback_fields(kinds, page, prefix="", autofocus=false) -%}
+<div class="field"><span class="label">What kind of feedback?</span>
+  <div class="radio-cards">
+    {% for k in kinds %}<label><input type="radio" name="kind" value="{{ k }}" {% if loop.first %}checked{% endif %}> {{ {'bug':'Bug','friction':'Friction','idea':'Idea'}.get(k, k | capitalize) }}</label>{% endfor %}
+  </div></div>
+<div class="field"><label for="{{ prefix }}title">Title</label><input type="text" id="{{ prefix }}title" name="title" required maxlength="300" placeholder="What's getting in your way?"{% if autofocus %} autofocus{% endif %}></div>
+<div class="field"><label for="{{ prefix }}body">Details</label><textarea id="{{ prefix }}body" name="body" placeholder="What were you trying to do, and what happened instead?"></textarea></div>
+<div class="field"><label for="{{ prefix }}page_path">Page</label><input type="text" id="{{ prefix }}page_path" name="page_path" value="{{ page }}" placeholder="/refunds" class="mono"><div class="hint">Pre-filled from where you clicked Feedback.</div></div>
+{%- endmacro %}

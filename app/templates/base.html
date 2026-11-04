@@ -70,7 +70,55 @@
 <script>setTimeout(function(){var t=document.querySelector('.toasts');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove()},400)}},5000)</script>
 {% endif %}
 {% if user and not path.startswith('/feedback/new') %}
-<a class="fab" href="/feedback/new?page={{ path | urlencode }}">{{ icon("chat") }} Feedback</a>
+{% from "feedback/_fields.html" import feedback_fields %}
+<a class="fab" id="fb-open" href="/feedback/new?page={{ path | urlencode }}" aria-haspopup="dialog">{{ icon("chat") }} Feedback</a>
+<dialog class="drawer" id="fb-dialog" aria-labelledby="fb-heading">
+  <form method="post" action="/feedback" id="fb-form">
+    <div class="drawer-h">
+      <div><h2 id="fb-heading">Report friction</h2><p>Your page stays as it is; nothing you've typed here is lost.</p></div>
+      <button type="button" class="close" data-fb-close aria-label="Close">×</button>
+    </div>
+    <div class="drawer-b">
+      <div class="alert alert-error" id="fb-error" role="alert" hidden>{{ icon("x-circle") }}<span></span></div>
+      {{ feedback_fields(feedback_kinds, path, prefix="fb-") }}
+    </div>
+    <div class="drawer-f">
+      <span class="small muted">Submitting as {{ user.name }} ({{ user.role }})</span>
+      <span style="display:flex;gap:8px"><button type="button" class="btn" data-fb-close>Cancel</button><button class="btn btn-primary" type="submit" id="fb-submit">{{ icon("check") }} Submit</button></span>
+    </div>
+  </form>
+</dialog>
+<script>
+(function(){
+  var dlg=document.getElementById('fb-dialog'),form=document.getElementById('fb-form'),open=document.getElementById('fb-open');
+  if(!dlg||typeof dlg.showModal!=='function')return;  /* no <dialog> support: the button stays a link to /feedback/new */
+  var err=document.getElementById('fb-error'),submit=document.getElementById('fb-submit');
+  function toast(msg,href){
+    var box=document.querySelector('.toasts');
+    if(!box){box=document.createElement('div');box.className='toasts';document.body.appendChild(box)}
+    var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');
+    t.innerHTML={{ icon("check-circle") | tojson }};
+    var s=document.createElement('span');s.textContent=msg+' ';
+    if(href){var a=document.createElement('a');a.href=href;a.textContent='View ticket';s.appendChild(a)}
+    var x=document.createElement('button');x.className='x';x.type='button';x.textContent='×';x.onclick=function(){t.remove()};
+    t.appendChild(s);t.appendChild(x);box.appendChild(t);
+    setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove()},400)},6000);
+  }
+  open.addEventListener('click',function(e){e.preventDefault();err.hidden=true;dlg.showModal();document.getElementById('fb-title').focus()});
+  dlg.querySelectorAll('[data-fb-close]').forEach(function(b){b.addEventListener('click',function(){dlg.close()})});
+  dlg.addEventListener('click',function(e){if(e.target===dlg)dlg.close()});
+  form.addEventListener('submit',function(e){
+    e.preventDefault();err.hidden=true;submit.disabled=true;
+    fetch(form.action,{method:'POST',body:new FormData(form),headers:{'Accept':'application/json'},credentials:'same-origin'})
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(d){
+        if(!r.ok)throw new Error(d.error||(r.status===401?'Your session expired. Sign in again in another tab, then resubmit.':'Could not send feedback (HTTP '+r.status+').'));
+        return d})})
+      .then(function(d){form.reset();dlg.close();toast(d.message||'Thanks, feedback recorded',d.url)})
+      .catch(function(x){err.querySelector('span').textContent=x.message;err.hidden=false})
+      .finally(function(){submit.disabled=false});
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}
 </body>

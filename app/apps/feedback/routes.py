@@ -3,7 +3,7 @@ from datetime import timedelta, timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
@@ -13,11 +13,12 @@ from app.platform.auth import current_user, require
 from app.platform.db import get_db
 from app.platform.github import IssueTrackerError, get_issue_tracker, issue_label
 from app.platform.models import User, utcnow
-from app.web import render
+from app.web import render, templates
 
 from .models import KINDS, FeedbackTicket
 
 router = APIRouter(prefix="/feedback")
+templates.env.globals["feedback_kinds"] = KINDS  # the inline feedback drawer in base.html
 
 
 def github_repo() -> str:
@@ -120,11 +121,19 @@ def new_form(request: Request, page: str = "", user: User = Depends(current_user
     return render(request, "feedback/new.html", user, page=page, kinds=KINDS)
 
 
+def _wants_json(request: Request) -> bool:
+    """The inline drawer submits with fetch and asks for JSON so the page the user is on never reloads."""
+    accept = request.headers.get("accept", "")
+    return "application/json" in accept and "text/html" not in accept
+
+
 @router.post("")
-def create(title: str = Form(...), body: str = Form(""), kind: str = Form("friction"), page_path: str = Form(""),
-           db: Session = Depends(get_db), user: User = Depends(current_user)):
+def create(request: Request, title: str = Form(""), body: str = Form(""), kind: str = Form("friction"),
+           page_path: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
     title = title.strip()
     if not title:
+        if _wants_json(request):
+            return JSONResponse({"error": "Title is required"}, status_code=400)
         return RedirectResponse(f"/feedback/new?{urlencode({'page': page_path, 'error': 'Title is required'})}", status_code=303)
     if kind not in KINDS:
         kind = "friction"
@@ -143,6 +152,9 @@ def create(title: str = Form(...), body: str = Form(""), kind: str = Form("frict
             audit(db, None, "feedback.file_failed", "feedback", t.id, after={"error": str(e)[:200]})
     db.commit()
     events.dispatch_pending(db)
+    if _wants_json(request):
+        return JSONResponse({"id": t.id, "url": f"/feedback/{t.id}", "message": msg,
+                             "github_issue_url": t.github_issue_url}, status_code=201)
     return RedirectResponse(f"/feedback/{t.id}?{urlencode({'msg': msg})}", status_code=303)
 
 

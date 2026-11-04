@@ -39,7 +39,9 @@ tables. They communicate through events.
   Each request carries an idempotency key, so a double submit never refunds twice. Requests that exceed the
   remaining refundable amount are rejected. The payment processor is a fake adapter. The app shows a KYC hint
   on a transaction, built from `kyc.decision.v1` events only.
-- **Feedback queue** (`/feedback`): every page has a floating **Feedback** button for reporting friction. Tickets
+- **Feedback queue** (`/feedback`): every page has a floating **Feedback** button for reporting friction. It opens an
+  inline drawer over the current page and submits in the background, so a half-filled form on that page is never lost
+  (without JavaScript it falls back to the standalone `/feedback/new` page). Tickets
   land on a board (open / filed / shipped). Admins (the platform team) triage a ticket into a pre-filled GitHub
   issue; operators never need to open GitHub.
 - **KYC review** (`/kyc`): cases arrive from the KYC vendor's **signed webhook** (`POST /kyc/webhook/vendor`,
@@ -89,8 +91,8 @@ queue. A smoke test renders every page as every role against the full demo seed.
 ## Demo flow
 
 1. Log in as **Oscar Operator** and use the app normally: toggle a dev flag, request a refund.
-2. When something is awkward, click the floating **Feedback** button and describe the friction. The ticket
-   records which page it came from.
+2. When something is awkward, click the floating **Feedback** button and describe the friction in the drawer that
+   opens; you stay on the page you were working on. The ticket records which page it came from.
 3. Log in as **Adam Admin** (the platform team). On the ticket, click **Create GitHub issue**: the app files it with the `devin` label and links it.
 4. The `devin` label triggers `.github/workflows/devin-on-label.yml`, which starts a Devin session through the Devin API (repo secret `DEVIN_API_KEY`). Devin changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
