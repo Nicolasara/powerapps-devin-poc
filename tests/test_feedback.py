@@ -163,3 +163,19 @@ def test_stale_filing_claim_can_be_retried_but_fresh_one_cannot(login, db, monke
     assert "issue+created" in resp.headers["location"] and len(FakeIssueTracker.issues) == 1
     db.expire_all()
     assert db.get(FeedbackTicket, ticket_id).status == "filed"
+
+
+def test_inline_dialog_is_on_every_page_and_posts_json(login, db):
+    oscar = login("oscar")
+    page = oscar.get("/refunds").text
+    assert 'id="fb-dialog"' in page and 'name="page_path" value="/refunds"' in page
+    assert "/feedback/new?page=" not in page  # no redirect away from the page any more
+    resp = oscar.post("/feedback", data={"title": "Lost my half-filled refund form", "kind": "friction",
+                                         "page_path": "/refunds/tx/3"}, headers={"accept": "application/json"})
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["url"] == f"/feedback/{body['id']}" and body["status"] in ("open", "filed")
+    ticket = db.get(FeedbackTicket, body["id"])
+    assert ticket.page_path == "/refunds/tx/3"
+    bad = oscar.post("/feedback", data={"title": "  ", "kind": "bug"}, headers={"accept": "application/json"})
+    assert bad.status_code == 400 and bad.json()["error"] == "Title is required"

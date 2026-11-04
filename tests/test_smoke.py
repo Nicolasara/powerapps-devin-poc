@@ -56,6 +56,6 @@ def test_every_page_renders_for_every_role(login, demo, name):
         assert resp.status_code == (200 if name in ("april", "adam") else 403), (name, page, resp.status_code)
 
 
-def test_feedback_link_is_in_the_footer(login, demo):
+def test_feedback_dialog_is_on_every_page(login, demo):
     page = login("oscar").get("/flags", headers={"accept": "text/html"})
-    assert "/feedback/new?page=" in page.text
+    assert 'id="fb-dialog"' in page.text and 'name="page_path" value="/flags"' in page.text

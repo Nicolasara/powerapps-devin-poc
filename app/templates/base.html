@@ -70,7 +70,46 @@
 <script>setTimeout(function(){var t=document.querySelector('.toasts');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove()},400)}},5000)</script>
 {% endif %}
 {% if user and not path.startswith('/feedback/new') %}
-<a class="fab" href="/feedback/new?page={{ path | urlencode }}">{{ icon("chat") }} Feedback</a>
+<button class="fab" type="button" onclick="document.getElementById('fb-dialog').showModal();document.getElementById('fb-title').focus()">{{ icon("chat") }} Feedback</button>
+<dialog id="fb-dialog" class="fb-dialog" aria-labelledby="fb-h">
+  <form method="post" action="/feedback" id="fb-form" class="fb-form">
+    <div class="card-h" style="padding:0 0 12px"><div><h2 id="fb-h">Report friction</h2><p>Stays on this page; nothing you typed is lost.</p></div><button class="x" type="button" onclick="document.getElementById('fb-dialog').close()" aria-label="Close">×</button></div>
+    <div class="field"><span class="label">Kind</span><div class="radio-cards">
+      <label><input type="radio" name="kind" value="friction" checked> Friction</label>
+      <label><input type="radio" name="kind" value="bug"> Bug</label>
+      <label><input type="radio" name="kind" value="idea"> Idea</label></div></div>
+    <div class="field"><label for="fb-title">Title</label><input type="text" id="fb-title" name="title" required maxlength="300" placeholder="What's getting in your way?"></div>
+    <div class="field"><label for="fb-body">Details</label><textarea id="fb-body" name="body" rows="4" placeholder="What were you trying to do, and what happened instead?"></textarea></div>
+    <input type="hidden" name="page_path" value="{{ path }}">
+    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:6px">
+      <span class="small muted">Submitting as {{ user.name }} ({{ user.role }}) · page <span class="mono">{{ path }}</span></span>
+      <span style="display:flex;gap:8px"><button class="btn" type="button" onclick="document.getElementById('fb-dialog').close()">Cancel</button><button class="btn btn-primary" type="submit">{{ icon("check") }} Submit</button></span>
+    </div>
+  </form>
+</dialog>
+<script>
+(function(){
+  var f=document.getElementById('fb-form'); if(!f) return;
+  f.addEventListener('submit',function(e){
+    e.preventDefault();
+    var btn=f.querySelector('button[type=submit]'); btn.disabled=true;
+    fetch('/feedback',{method:'POST',body:new FormData(f),headers:{'Accept':'application/json'},credentials:'same-origin'})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+      .then(function(res){
+        btn.disabled=false;
+        if(!res.ok){toast(res.j.error||'Could not send feedback',true);return}
+        f.reset(); document.getElementById('fb-dialog').close();
+        toast('Thanks, feedback recorded as ticket #'+res.j.id+'. ',false,'/feedback/'+res.j.id);
+      }).catch(function(){btn.disabled=false;toast('Could not send feedback',true)});
+  });
+  function toast(msg,err,href){
+    var wrap=document.querySelector('.toasts'); if(!wrap){wrap=document.createElement('div');wrap.className='toasts';document.body.appendChild(wrap)}
+    var t=document.createElement('div'); t.className='toast'+(err?' err':'');
+    t.innerHTML='<span>'+msg+(href?'<a href="'+href+'" style="color:#a5b4fc">View ticket</a>':'')+'</span><button class="x" onclick="this.parentNode.remove()">×</button>';
+    wrap.appendChild(t); setTimeout(function(){t.remove()},6000);
+  }
+})();
+</script>
 {% endif %}
 {% endblock %}
 </body>

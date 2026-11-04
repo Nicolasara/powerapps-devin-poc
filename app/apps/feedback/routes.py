@@ -3,7 +3,7 @@ from datetime import timedelta, timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
@@ -121,10 +121,13 @@ def new_form(request: Request, page: str = "", user: User = Depends(current_user
 
 
 @router.post("")
-def create(title: str = Form(...), body: str = Form(""), kind: str = Form("friction"), page_path: str = Form(""),
-           db: Session = Depends(get_db), user: User = Depends(current_user)):
+def create(request: Request, title: str = Form(...), body: str = Form(""), kind: str = Form("friction"),
+           page_path: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    wants_json = "application/json" in request.headers.get("accept", "")
     title = title.strip()
     if not title:
+        if wants_json:
+            return JSONResponse({"error": "Title is required"}, status_code=400)
         return RedirectResponse(f"/feedback/new?{urlencode({'page': page_path, 'error': 'Title is required'})}", status_code=303)
     if kind not in KINDS:
         kind = "friction"
@@ -143,6 +146,8 @@ def create(title: str = Form(...), body: str = Form(""), kind: str = Form("frict
             audit(db, None, "feedback.file_failed", "feedback", t.id, after={"error": str(e)[:200]})
     db.commit()
     events.dispatch_pending(db)
+    if wants_json:
+        return JSONResponse({"id": t.id, "status": t.status, "url": f"/feedback/{t.id}", "msg": msg}, status_code=201)
     return RedirectResponse(f"/feedback/{t.id}?{urlencode({'msg': msg})}", status_code=303)
 
 
