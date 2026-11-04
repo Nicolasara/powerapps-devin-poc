@@ -92,7 +92,7 @@ queue. A smoke test renders every page as every role against the full demo seed.
 2. When something is awkward, click the floating **Feedback** button and describe the friction. The ticket
    records which page it came from.
 3. Log in as **Adam Admin** (the platform team). On the ticket, click **Create GitHub issue**: the app files it with the `devin` label and links it.
-4. Devin picks up the issue, changes the code and opens a pull request. CI runs lint and tests, and a person
+4. The `devin` label triggers `.github/workflows/devin-on-label.yml`, which starts a Devin session through the Devin API (repo secret `DEVIN_API_KEY`). Devin changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
 
 The point of the demo is the loop: friction a user reports becomes a reviewed code change.

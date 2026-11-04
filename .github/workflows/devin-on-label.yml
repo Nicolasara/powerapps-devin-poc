@@ -1,0 +1,62 @@
+# Feedback → GitHub issue → Devin PR, with no human in between.
+# The internal-tools app files issues with the `devin` label (app/platform/github.py). When that label lands,
+# this workflow starts a Devin session through the public API; Devin reads the issue, makes the change,
+# runs lint and tests, and opens a pull request that an engineer reviews and merges.
+name: Devin on label
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  start-devin:
+    if: github.event.label.name == 'devin'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Start a Devin session for this issue
+        id: devin
+        env:
+          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEVIN_API_KEY}" ]; then
+            echo "::error::DEVIN_API_KEY secret is not set (Settings → Secrets and variables → Actions)."; exit 1
+          fi
+          prompt=$(cat <<PROMPT
+          Repository: ${REPO}
+          GitHub issue #${ISSUE_NUMBER}: ${ISSUE_URL}
+
+          Title: ${ISSUE_TITLE}
+
+          ${ISSUE_BODY}
+
+          Instructions: implement what the issue asks for in this repository on a new branch off main, following the
+          architecture rules in README.md (apps do not read each other's tables, external systems stay behind adapters).
+          Run \`ruff check .\` and \`pytest -q\` and make them pass. Open a pull request against main whose description
+          says "Closes #${ISSUE_NUMBER}". Do not merge it. If the issue is too vague to act on, comment on the issue with
+          the questions you need answered instead of guessing.
+          PROMPT
+          )
+          payload=$(jq -n --arg p "$prompt" --arg t "Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}" --arg tag "issue-${ISSUE_NUMBER}" \
+            '{prompt: $p, title: $t, idempotent: true, tags: ["devin-on-label", $tag]}')
+          resp=$(curl -sS -X POST https://api.devin.ai/v1/sessions \
+            -H "Authorization: Bearer ${DEVIN_API_KEY}" -H "Content-Type: application/json" \
+            --data "$payload")
+          echo "$resp"
+          url=$(echo "$resp" | jq -r '.url // empty')
+          if [ -z "$url" ]; then echo "::error::Devin API did not return a session url"; exit 1; fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Leave a trail on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" -R "${{ github.repository }}" \
+            --body "Devin picked this up automatically from the \`devin\` label: ${{ steps.devin.outputs.url }}. A pull request will follow for review."
