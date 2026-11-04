@@ -23,18 +23,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SENDER: ${{ github.event.sender.login }}
-          SENDER_TYPE: ${{ github.event.sender.type }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          # The GitHub App the internal-tools app files issues with (repository variable; defaults to the Devin app).
+          TRUSTED_BOT: ${{ vars.DEVIN_TRUSTED_BOT || 'devin-ai-integration[bot]' }}
         run: |
           set -euo pipefail
-          if [ "$SENDER_TYPE" = "Bot" ] && [ "$SENDER" = "devin-ai-integration[bot]" ]; then
-            echo "labelled by the app's GitHub App"; exit 0
-          fi
-          perm=$(gh api "repos/${{ github.repository }}/collaborators/${SENDER}/permission" --jq .permission || echo none)
-          echo "sender=${SENDER} permission=${perm}"
-          case "$perm" in
-            admin|maintain|write) ;;
-            *) echo "::error::${SENDER} (${perm}) is not allowed to start Devin sessions; a maintainer must apply the label."; exit 1 ;;
-          esac
+          allowed() {  # trusted filing bot, or someone who can already push to this repo
+            if [ "$1" = "$TRUSTED_BOT" ]; then return 0; fi
+            perm=$(gh api "repos/${{ github.repository }}/collaborators/$1/permission" --jq .permission 2>/dev/null || echo none)
+            echo "$1 permission=${perm}"
+            case "$perm" in admin|maintain|write) return 0 ;; *) return 1 ;; esac
+          }
+          # Both the person applying the label and the person whose text becomes Devin's instructions must be trusted.
+          allowed "$SENDER" || { echo "::error::${SENDER} may not start Devin sessions; a maintainer must apply the label."; exit 1; }
+          allowed "$AUTHOR" || { echo "::error::issue author ${AUTHOR} is not a maintainer or the trusted filing bot; refile the request yourself if it is legitimate."; exit 1; }
 
       - name: Start a Devin session for this issue
         id: devin
@@ -74,13 +76,16 @@ jobs:
           url=$(echo "$resp" | jq -r '.url // empty')
           if [ -z "$url" ]; then echo "::error::Devin API did not return a session url"; exit 1; fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          # idempotent:true returns the existing session on a rerun; only announce it the first time.
-          echo "is_new=$(echo "$resp" | jq -r 'if .is_new_session == false then "false" else "true" end')" >> "$GITHUB_OUTPUT"
 
       - name: Leave a trail on the issue
-        if: steps.devin.outputs.is_new == 'true'
+        # idempotent:true returns the same session on a rerun; comment only if that URL is not on the issue yet.
         env:
           GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.devin.outputs.url }}
         run: |
+          set -euo pipefail
+          if gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" --paginate --jq '.[].body' | grep -qF "$URL"; then
+            echo "session already announced"; exit 0
+          fi
           gh issue comment "${{ github.event.issue.number }}" -R "${{ github.repository }}" \
-            --body "Devin picked this up automatically from the \`devin\` label: ${{ steps.devin.outputs.url }}. A pull request will follow for review."
+            --body "Devin picked this up automatically from the \`${{ github.event.label.name }}\` label: ${URL}. A pull request will follow for review."
