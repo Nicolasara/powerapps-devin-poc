@@ -10,11 +10,32 @@ on:
 
 jobs:
   start-devin:
-    if: github.event.label.name == 'devin'
+    # Same label the app applies (DEVIN_ISSUE_LABEL in the app; repository variable here), default `devin`.
+    if: github.event.label.name == (vars.DEVIN_ISSUE_LABEL || 'devin')
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read
     steps:
+      - name: Only maintainers may hand work to Devin
+        # The issue body becomes Devin's instructions, so only people who can already push to this repo
+        # (write/maintain/admin) or the app's own bot may pull the trigger. Anyone else: no session.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+        run: |
+          set -euo pipefail
+          if [ "$SENDER_TYPE" = "Bot" ] && [ "$SENDER" = "devin-ai-integration[bot]" ]; then
+            echo "labelled by the app's GitHub App"; exit 0
+          fi
+          perm=$(gh api "repos/${{ github.repository }}/collaborators/${SENDER}/permission" --jq .permission || echo none)
+          echo "sender=${SENDER} permission=${perm}"
+          case "$perm" in
+            admin|maintain|write) ;;
+            *) echo "::error::${SENDER} (${perm}) is not allowed to start Devin sessions; a maintainer must apply the label."; exit 1 ;;
+          esac
+
       - name: Start a Devin session for this issue
         id: devin
         env:
@@ -53,8 +74,11 @@ jobs:
           url=$(echo "$resp" | jq -r '.url // empty')
           if [ -z "$url" ]; then echo "::error::Devin API did not return a session url"; exit 1; fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          # idempotent:true returns the existing session on a rerun; only announce it the first time.
+          echo "is_new=$(echo "$resp" | jq -r 'if .is_new_session == false then "false" else "true" end')" >> "$GITHUB_OUTPUT"
 
       - name: Leave a trail on the issue
+        if: steps.devin.outputs.is_new == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
