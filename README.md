@@ -122,9 +122,9 @@ queue. A smoke test renders every page as every role against the full demo seed.
 4. The `devin` label triggers `.github/workflows/devin-on-label.yml`, which starts a Devin session through the Devin API (repo secret `DEVIN_API_KEY`). Devin changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
 
-The point of the demo is the loop: friction a user reports becomes a reviewed code change. It has run for real
-in this repository: ticket #2 → issue #5 → Devin session started by the Action → PR #11, about four minutes after
-the label landed.
+The point of the demo is the loop: friction a user reports becomes a reviewed code change. An example in this
+repository: issue #5 was filed from a feedback ticket, the Action started a Devin session when the `devin` label
+was applied, and that session opened PR #11 about four minutes later.
 
 ## Not production-ready
 
