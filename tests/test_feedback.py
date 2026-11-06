@@ -163,3 +163,51 @@ def test_stale_filing_claim_can_be_retried_but_fresh_one_cannot(login, db, monke
     assert "issue+created" in resp.headers["location"] and len(FakeIssueTracker.issues) == 1
     db.expire_all()
     assert db.get(FeedbackTicket, ticket_id).status == "filed"
+
+
+JSON = {"accept": "application/json"}
+
+
+def test_inline_submit_returns_json_without_redirect(login, db):
+    data = {"title": "Lost my refund draft", "body": "Opened feedback mid-form.", "kind": "idea", "page_path": "/refunds"}
+    resp = login("april").post("/feedback", data=data, headers=JSON, follow_redirects=False)
+    assert resp.status_code == 201
+    ticket = db.scalar(select(FeedbackTicket))
+    assert resp.json() == {"id": ticket.id, "url": f"/feedback/{ticket.id}", "message": "Thanks, feedback recorded",
+                           "github_issue_url": None}
+    assert (ticket.kind, ticket.page_path, ticket.submitted_by_email) == ("idea", "/refunds", "april@corp.test")
+    assert db.scalar(select(AuditEvent).where(AuditEvent.action == "feedback.created")) is not None
+
+
+def test_inline_submit_blank_title_is_a_json_error(login, db):
+    resp = login("oscar").post("/feedback", data={"title": "  ", "page_path": "/flags"}, headers=JSON)
+    assert resp.status_code == 400 and resp.json() == {"error": "Title is required"}
+    assert db.scalar(select(FeedbackTicket)) is None
+
+
+def test_inline_submit_requires_login(anon, db):
+    assert anon.post("/feedback", data={"title": "hi"}, headers=JSON).status_code == 401
+    assert db.scalar(select(FeedbackTicket)) is None
+
+
+def test_inline_auto_file_reports_issue_url(login, monkeypatch):
+    from app.platform.github import FakeIssueTracker
+    monkeypatch.setenv("FEEDBACK_AUTO_FILE", "1")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    FakeIssueTracker.issues.clear()
+    body = login("oscar").post("/feedback", data={"title": "Auto inline"}, headers=JSON).json()
+    assert body["message"].endswith("filed to GitHub") and body["github_issue_url"].endswith(f"/{FakeIssueTracker.issues[-1]['number']}")
+
+
+@pytest.mark.parametrize("page", ["/", "/flags", "/refunds", "/feedback"])
+def test_every_page_has_the_inline_feedback_drawer(login, page):
+    html = login("oscar").get(page, headers={"accept": "text/html"}).text
+    assert 'id="fb-dialog"' in html and 'action="/feedback"' in html
+    assert f'id="fb-page_path" name="page_path" value="{page}"' in html
+    assert 'id="fb-title"' in html  # prefixed ids never collide with the page's own form fields
+    assert f'href="/feedback/new?page={page}"' in html  # no-JS fallback link
+
+
+def test_standalone_form_has_no_drawer(login):
+    html = login("oscar").get("/feedback/new?page=/flags", headers={"accept": "text/html"}).text
+    assert 'id="fb-dialog"' not in html and 'id="title"' in html and 'value="/flags"' in html
