@@ -55,6 +55,8 @@ The shell (`app/main.py`) provides login, a home page, a cross-app approvals inb
 
 ## How to run
 
+Requires Python 3.10+ and nothing else (no Node, no Docker, no external services).
+
 ```bash
 python -m venv .venv
 . .venv/bin/activate
@@ -73,6 +75,31 @@ Open http://localhost:8000 and log in as one of the demo users:
 | Adam Admin (`adam@corp.test`) | admin | everything, including refunds of $1,000 or more |
 
 Triage creates the GitHub issue through the API (`app/platform/github.py`, label `devin` so an automation can pick it up). Without `GITHUB_TOKEN` a fake tracker is used; set `GITHUB_TOKEN` and `GITHUB_REPO=owner/repo` for real issues, and `FEEDBACK_AUTO_FILE=1` to file on submission instead of on triage.
+
+### Configuration
+
+Everything runs with no configuration. These environment variables change behaviour:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `DATABASE_URL` | `sqlite:///./poc.db` | SQLAlchemy URL; SQLite in dev, Postgres-compatible |
+| `APP_ENV` | `dev` | Anything else disables dev fallbacks (e.g. the KYC webhook secret below) |
+| `KYC_WEBHOOK_SECRET` | `dev-kyc-webhook-secret` in dev only | HMAC key the KYC vendor signs webhooks with (`X-Vendor-Signature`) |
+| `GITHUB_TOKEN` | unset → fake tracker | Token used to create GitHub issues from feedback triage |
+| `GITHUB_REPO` | `Nicolasara/powerapps-devin-poc` | Repository those issues are filed in |
+| `DEVIN_ISSUE_LABEL` | `devin` | Label applied to filed issues; the Action below triggers on it |
+| `FEEDBACK_AUTO_FILE` | unset | `1` files the GitHub issue on submission instead of on admin triage |
+| `DEVIN_API_KEY` (repo secret) | required for the Action | Used by `.github/workflows/devin-on-label.yml` to start a Devin session |
+
+### A two-minute tour
+
+- **Feature flags** (`/flags`): each flag follows a rollout plan; **Roll forward** on a dev flag, then on to prod
+  (which creates an approval for April), **Roll back** to step down immediately.
+- **Refunds** (`/refunds`): open a transaction and request $20 (executes), $500 (needs April) or $2,000 (needs Adam).
+  Transaction #3 shows the red KYC banner fed by `kyc.decision.v1`.
+- **KYC** (`/kyc`, April or Adam): open a high-risk case to see the device-fingerprint links, view the specimen ID
+  document, then use **Simulate vendor webhook** → "Same device as rejected applicant".
+- **Feedback**: click the floating button on any page; as Adam, open the ticket and **Create GitHub issue**.
 
 ## How to test
 
@@ -95,7 +122,9 @@ queue. A smoke test renders every page as every role against the full demo seed.
 4. The `devin` label triggers `.github/workflows/devin-on-label.yml`, which starts a Devin session through the Devin API (repo secret `DEVIN_API_KEY`). Devin changes the code and opens a pull request. CI runs lint and tests, and a person
    reviews and merges. The fix ships like any other code change.
 
-The point of the demo is the loop: friction a user reports becomes a reviewed code change.
+The point of the demo is the loop: friction a user reports becomes a reviewed code change. It has run for real
+in this repository: ticket #2 → issue #5 → Devin session started by the Action → PR #11, about four minutes after
+the label landed.
 
 ## Not production-ready
 
